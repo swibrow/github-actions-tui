@@ -127,6 +127,9 @@ func (m JobsModel) View() string {
 
 	lines := strings.Split(content, "\n")
 	innerH := m.height - 2
+	if innerH < 1 {
+		innerH = 1
+	}
 	for len(lines) < innerH {
 		lines = append(lines, "")
 	}

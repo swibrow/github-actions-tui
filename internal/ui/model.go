@@ -395,6 +395,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		m.view = ViewJobs
 		m.jobs.SetLoading(true)
 		m.jobs.SetFocused(true)
+		m.updateLayout()
 		return m, m.fetchJobs(run.ID)
 
 	case ViewJobs:

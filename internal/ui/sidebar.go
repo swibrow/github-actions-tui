@@ -103,6 +103,9 @@ func (m SidebarModel) View() string {
 	// Pad content to fill the panel
 	lines := strings.Split(content, "\n")
 	innerH := m.height - 2 // border
+	if innerH < 1 {
+		innerH = 1
+	}
 	for len(lines) < innerH {
 		lines = append(lines, "")
 	}
