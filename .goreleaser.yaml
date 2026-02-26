@@ -4,7 +4,7 @@ builds:
   - main: ./cmd/gha
     binary: gha
     ldflags:
-      - -s -w
+      - -s -w -X main.version={{.Version}}
     goos:
       - linux
       - darwin
@@ -18,6 +18,20 @@ archives:
 
 checksum:
   name_template: checksums.txt
+
+brews:
+  - repository:
+      owner: swibrow
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    name: gha
+    homepage: https://github.com/swibrow/github-actions-tui
+    description: Terminal UI for GitHub Actions
+    license: MIT
+    install: |
+      bin.install "gha"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/gha --version")
 
 changelog:
   use: github-native

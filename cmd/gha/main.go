@@ -13,7 +13,14 @@ import (
 	"github.com/swibrow/github-actions-tui/internal/ui"
 )
 
+var version = "dev"
+
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Println(version)
+		os.Exit(0)
+	}
+
 	// Enable debug logging only when GHA_DEBUG=1
 	if os.Getenv("GHA_DEBUG") == "1" {
 		log.SetFlags(log.Ltime | log.Lshortfile)
