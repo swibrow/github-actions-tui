@@ -17,10 +17,12 @@ import (
 type Workflow struct {
 	ID   int64
 	Name string
+	Path string // e.g. ".github/workflows/ci.yml"
 }
 
 type WorkflowRun struct {
 	ID           int64
+	WorkflowID   int64
 	Number       int
 	Name         string
 	Status       string
@@ -58,6 +60,16 @@ type RunFilter struct {
 	Actor      string
 	Status     string
 	Event      string
+}
+
+// GitHubClient is the interface satisfied by *Client and used by the UI layer.
+type GitHubClient interface {
+	FetchWorkflows(ctx context.Context) ([]Workflow, error)
+	FetchRuns(ctx context.Context, filter RunFilter) ([]WorkflowRun, error)
+	FetchJobs(ctx context.Context, runID int64) ([]WorkflowJob, error)
+	FetchJobLogs(ctx context.Context, jobID int64) (string, error)
+	FetchRunsForWorkflow(ctx context.Context, workflowID int64, count int) ([]WorkflowRun, error)
+	FetchWorkflowYAML(ctx context.Context, path string) (map[string][]string, error)
 }
 
 type Client struct {
@@ -105,6 +117,7 @@ func (c *Client) FetchWorkflows(ctx context.Context) ([]Workflow, error) {
 		workflows = append(workflows, Workflow{
 			ID:   w.GetID(),
 			Name: w.GetName(),
+			Path: w.GetPath(),
 		})
 	}
 	return workflows, nil
@@ -142,16 +155,17 @@ func (c *Client) FetchRuns(ctx context.Context, filter RunFilter) ([]WorkflowRun
 	runs := make([]WorkflowRun, 0, len(result.WorkflowRuns))
 	for _, r := range result.WorkflowRuns {
 		run := WorkflowRun{
-			ID:        r.GetID(),
-			Number:    r.GetRunNumber(),
-			Name:      r.GetName(),
-			Status:    r.GetStatus(),
+			ID:         r.GetID(),
+			WorkflowID: r.GetWorkflowID(),
+			Number:     r.GetRunNumber(),
+			Name:       r.GetName(),
+			Status:     r.GetStatus(),
 			Conclusion: r.GetConclusion(),
-			Branch:    r.GetHeadBranch(),
-			Event:     r.GetEvent(),
-			Actor:     r.GetActor().GetLogin(),
-			CreatedAt: r.GetCreatedAt().Time,
-			UpdatedAt: r.GetUpdatedAt().Time,
+			Branch:     r.GetHeadBranch(),
+			Event:      r.GetEvent(),
+			Actor:      r.GetActor().GetLogin(),
+			CreatedAt:  r.GetCreatedAt().Time,
+			UpdatedAt:  r.GetUpdatedAt().Time,
 		}
 		if r.RunStartedAt != nil {
 			run.RunStartedAt = r.GetRunStartedAt().Time
@@ -218,6 +232,56 @@ func (c *Client) FetchJobLogs(ctx context.Context, jobID int64) (string, error) 
 		return "", fmt.Errorf("reading job logs: %w", err)
 	}
 	return string(body), nil
+}
+
+func (c *Client) FetchRunsForWorkflow(ctx context.Context, workflowID int64, count int) ([]WorkflowRun, error) {
+	opts := &github.ListWorkflowRunsOptions{
+		ListOptions: github.ListOptions{PerPage: count},
+	}
+	result, _, err := c.gh.Actions.ListWorkflowRunsByID(ctx, c.owner, c.repo, workflowID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("fetching runs for workflow: %w", err)
+	}
+
+	runs := make([]WorkflowRun, 0, len(result.WorkflowRuns))
+	for _, r := range result.WorkflowRuns {
+		run := WorkflowRun{
+			ID:         r.GetID(),
+			WorkflowID: r.GetWorkflowID(),
+			Number:     r.GetRunNumber(),
+			Name:       r.GetName(),
+			Status:     r.GetStatus(),
+			Conclusion: r.GetConclusion(),
+			Branch:     r.GetHeadBranch(),
+			Event:      r.GetEvent(),
+			Actor:      r.GetActor().GetLogin(),
+			CreatedAt:  r.GetCreatedAt().Time,
+			UpdatedAt:  r.GetUpdatedAt().Time,
+		}
+		if r.RunStartedAt != nil {
+			run.RunStartedAt = r.GetRunStartedAt().Time
+		}
+		if run.Status == "completed" && !run.RunStartedAt.IsZero() {
+			run.Duration = run.UpdatedAt.Sub(run.RunStartedAt)
+		}
+		runs = append(runs, run)
+	}
+	return runs, nil
+}
+
+func (c *Client) FetchFileContent(ctx context.Context, path string) ([]byte, error) {
+	fileContent, _, _, err := c.gh.Repositories.GetContents(ctx, c.owner, c.repo, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fetching file content: %w", err)
+	}
+	if fileContent == nil {
+		return nil, fmt.Errorf("path %s is not a file", path)
+	}
+	content, err := fileContent.GetContent()
+	if err != nil {
+		return nil, fmt.Errorf("decoding file content: %w", err)
+	}
+	return []byte(content), nil
 }
 
 func HasActiveRuns(runs []WorkflowRun) bool {
