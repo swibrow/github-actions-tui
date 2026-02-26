@@ -53,6 +53,14 @@ func NewRunsModel() RunsModel {
 }
 
 func (m *RunsModel) SetRuns(runs []gh.WorkflowRun) {
+	m.setRuns(runs, false)
+}
+
+func (m *RunsModel) SetRunsAndReset(runs []gh.WorkflowRun) {
+	m.setRuns(runs, true)
+}
+
+func (m *RunsModel) setRuns(runs []gh.WorkflowRun, resetCursor bool) {
 	m.runs = runs
 	m.loading = false
 	rows := make([]table.Row, 0, len(runs))
@@ -78,7 +86,7 @@ func (m *RunsModel) SetRuns(runs []gh.WorkflowRun) {
 		})
 	}
 	m.table.SetRows(rows)
-	if len(rows) > 0 {
+	if resetCursor && len(rows) > 0 {
 		m.table.GotoTop()
 	}
 	m.resizeColumns()

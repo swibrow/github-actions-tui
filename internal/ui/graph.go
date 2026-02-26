@@ -17,16 +17,18 @@ type GraphTier struct {
 
 // GraphModel displays jobs grouped by dependency tiers.
 type GraphModel struct {
-	tiers   []GraphTier
-	jobs    []gh.WorkflowJob
-	flat    []int // flat index -> (tierIdx, jobIdx) encoded as tierIdx*1000+jobIdx
-	cursor  int
-	offset  int
-	focused bool
-	loading bool
-	width   int
-	height  int
-	runName string
+	tiers         []GraphTier
+	jobs          []gh.WorkflowJob
+	flat          []int // flat index -> (tierIdx, jobIdx) encoded as tierIdx*1000+jobIdx
+	cursor        int
+	offset        int
+	focused       bool
+	loading       bool
+	width         int
+	height        int
+	runName       string
+	currentAttempt int
+	totalAttempts  int
 }
 
 func NewGraphModel() GraphModel {
@@ -181,6 +183,12 @@ func (m GraphModel) SelectedJob() *gh.WorkflowJob {
 	return nil
 }
 
+func (m *GraphModel) SetRunInfo(runName string, currentAttempt, totalAttempts int) {
+	m.runName = runName
+	m.currentAttempt = currentAttempt
+	m.totalAttempts = totalAttempts
+}
+
 func (m *GraphModel) SetFocused(focused bool) {
 	m.focused = focused
 }
@@ -245,6 +253,9 @@ func (m GraphModel) View() string {
 	}
 
 	title := styleTitle.Render(fmt.Sprintf("Jobs: %s", m.runName)) + "\n"
+	if m.totalAttempts > 1 {
+		title += styleHelpBar.Render(fmt.Sprintf("  ← [ attempt %d/%d ] →", m.currentAttempt, m.totalAttempts)) + "\n"
+	}
 
 	if m.loading {
 		content := title + styleLoading.Render("  Loading jobs...")
@@ -301,6 +312,9 @@ func (m GraphModel) View() string {
 
 	// Scroll to keep cursor visible
 	innerH := m.height - 4 // border + title
+	if m.totalAttempts > 1 {
+		innerH-- // attempt hint line
+	}
 	if innerH < 1 {
 		innerH = 1
 	}

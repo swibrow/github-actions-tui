@@ -35,8 +35,9 @@ type WorkflowsMsg struct {
 }
 
 type RunsMsg struct {
-	Runs []gh.WorkflowRun
-	Err  error
+	Runs       []gh.WorkflowRun
+	Err        error
+	ResetCursor bool
 }
 
 type JobsMsg struct {
@@ -64,6 +65,7 @@ type JobStatusMsg struct {
 type TickMsg time.Time
 
 type GGTimeoutMsg struct{}
+type BackLockMsg struct{}
 
 type RepoListMsg struct {
 	Repos []gh.Repository
@@ -109,6 +111,7 @@ type Model struct {
 	currentAttempt int
 	sidebarVisible bool
 	confirmQuit    bool
+	backLocked     bool
 	yamlCache      map[string]map[string][]string // path -> job deps
 	repoOwner      string
 	repoName       string
@@ -139,7 +142,7 @@ func NewModel(client gh.GitHubClient, owner, repo string) Model {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.fetchWorkflows(),
-		m.fetchRuns(gh.RunFilter{}),
+		m.fetchRuns(gh.RunFilter{}, true),
 		m.tickCmd(),
 	)
 }
@@ -151,17 +154,10 @@ func (m Model) fetchWorkflows() tea.Cmd {
 	}
 }
 
-func (m Model) fetchRuns(filter gh.RunFilter) tea.Cmd {
+func (m Model) fetchRuns(filter gh.RunFilter, resetCursor bool) tea.Cmd {
 	return func() tea.Msg {
 		runs, err := m.client.FetchRuns(m.ctx, filter)
-		return RunsMsg{Runs: runs, Err: err}
-	}
-}
-
-func (m Model) fetchJobs(runID int64) tea.Cmd {
-	return func() tea.Msg {
-		jobs, err := m.client.FetchJobs(m.ctx, runID)
-		return JobsMsg{Jobs: jobs, Err: err}
+		return RunsMsg{Runs: runs, Err: err, ResetCursor: resetCursor}
 	}
 }
 
@@ -294,7 +290,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.Err
 			return m, nil
 		}
-		m.runs.SetRuns(msg.Runs)
+		if msg.ResetCursor {
+			m.runs.SetRunsAndReset(msg.Runs)
+		} else {
+			m.runs.SetRuns(msg.Runs)
+		}
 		return m, nil
 
 	case JobsMsg:
@@ -302,14 +302,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.Err
 			return m, nil
 		}
-		runName := ""
-		if m.currentRun != nil {
-			if m.currentRun.RunAttempt > 1 {
-				runName = fmt.Sprintf("#%d·%d %s (attempt %d/%d)", m.currentRun.Number, m.currentAttempt, m.currentRun.Branch, m.currentAttempt, m.currentRun.RunAttempt)
-			} else {
-				runName = fmt.Sprintf("#%d %s", m.currentRun.Number, m.currentRun.Branch)
-			}
-		}
+		m.updateGraphRunInfo()
 
 		// Try to find workflow path for YAML-based deps
 		var deps map[string][]string
@@ -324,7 +317,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		m.graph.SetJobs(msg.Jobs, deps, runName)
+		m.graph.SetJobs(msg.Jobs, deps, m.graph.runName)
 		return m, yamlCmd
 
 	case WorkflowYAMLMsg:
@@ -335,15 +328,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.yamlCache[msg.Path] = msg.Deps
 		// Re-render graph with proper deps
 		if m.view == ViewJobs && len(m.graph.jobs) > 0 {
-			runName := ""
-			if m.currentRun != nil {
-				if m.currentRun.RunAttempt > 1 {
-					runName = fmt.Sprintf("#%d·%d %s (attempt %d/%d)", m.currentRun.Number, m.currentAttempt, m.currentRun.Branch, m.currentAttempt, m.currentRun.RunAttempt)
-				} else {
-					runName = fmt.Sprintf("#%d %s", m.currentRun.Number, m.currentRun.Branch)
-				}
-			}
-			m.graph.SetJobs(m.graph.jobs, msg.Deps, runName)
+			m.graph.SetJobs(m.graph.jobs, msg.Deps, m.graph.runName)
 		}
 		return m, nil
 
@@ -389,14 +374,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case ViewWorkflowRuns:
 			wfID, _ := m.tree.SelectedWorkflow()
 			filter := m.filter.CurrentFilter(wfID)
-			cmds = append(cmds, m.fetchRuns(filter))
+			cmds = append(cmds, m.fetchRuns(filter, false))
 		case ViewJobs:
 			if m.currentRun != nil {
-				if m.currentAttempt > 0 && m.currentAttempt < m.currentRun.RunAttempt {
-					cmds = append(cmds, m.fetchJobsForAttempt(m.currentRun.ID, m.currentAttempt))
-				} else {
-					cmds = append(cmds, m.fetchJobs(m.currentRun.ID))
-				}
+				cmds = append(cmds, m.fetchJobsForAttempt(m.currentRun.ID, m.currentAttempt))
 			}
 		case ViewLogs:
 			if m.currentJob != nil && m.logs.IsJobInProgress() && m.currentRun != nil {
@@ -466,11 +447,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingG = false
 		return m, nil
 
+	case BackLockMsg:
+		m.backLocked = false
+		return m, nil
+
 	case FilterAppliedMsg:
 		wfID, _ := m.tree.SelectedWorkflow()
 		msg.Filter.WorkflowID = wfID
 		m.runs.SetLoading(true)
-		return m, m.fetchRuns(msg.Filter)
+		return m, m.fetchRuns(msg.Filter, true)
 
 	case FilterCancelledMsg:
 		return m, nil
@@ -610,10 +595,22 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.view == ViewWorkflowRuns {
-			// esc at top level does nothing
 			return m, nil
 		}
-		return m.goBack()
+		// Lock-based guard: terminals can send duplicate esc events
+		// from a single keypress. Ignore esc while locked.
+		if m.backLocked {
+			return m, nil
+		}
+		m.backLocked = true
+		result, cmd := m.goBack()
+		unlockCmd := tea.Tick(300*time.Millisecond, func(_ time.Time) tea.Msg {
+			return BackLockMsg{}
+		})
+		if cmd != nil {
+			return result, tea.Batch(cmd, unlockCmd)
+		}
+		return result, unlockCmd
 
 	case key.Matches(msg, Keys.SwitchPane):
 		if m.sidebarVisible {
@@ -709,7 +706,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			wfID, _ := m.tree.SelectedWorkflow()
 			filter := m.filter.CurrentFilter(wfID)
 			m.runs.SetLoading(true)
-			return m, m.fetchRuns(filter)
+			return m, m.fetchRuns(filter, false)
 
 		case key.Matches(msg, Keys.Enter):
 			return m.handleEnter()
@@ -748,6 +745,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.currentRun != nil && m.currentAttempt > 1 {
 				m.currentAttempt--
 				m.graph.SetLoading(true)
+				m.updateGraphRunInfo()
 				return m, m.fetchJobsForAttempt(m.currentRun.ID, m.currentAttempt)
 			}
 			return m, nil
@@ -756,6 +754,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.currentRun != nil && m.currentAttempt < m.currentRun.RunAttempt {
 				m.currentAttempt++
 				m.graph.SetLoading(true)
+				m.updateGraphRunInfo()
 				return m, m.fetchJobsForAttempt(m.currentRun.ID, m.currentAttempt)
 			}
 			return m, nil
@@ -763,10 +762,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, Keys.Refresh):
 			if m.currentRun != nil {
 				m.graph.SetLoading(true)
-				if m.currentAttempt < m.currentRun.RunAttempt {
-					return m, m.fetchJobsForAttempt(m.currentRun.ID, m.currentAttempt)
-				}
-				return m, m.fetchJobs(m.currentRun.ID)
+				m.updateGraphRunInfo()
+				return m, m.fetchJobsForAttempt(m.currentRun.ID, m.currentAttempt)
 			}
 			return m, nil
 
@@ -817,9 +814,10 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 				m.focus = FocusMain
 				m.tree.SetFocused(false)
 				m.graph.SetLoading(true)
+				m.updateGraphRunInfo()
 				m.graph.SetFocused(true)
 				m.updateLayout()
-				return m, m.fetchJobs(run.ID)
+				return m, m.fetchJobsForAttempt(run.ID, m.currentAttempt)
 			}
 			return m, nil
 		}
@@ -835,9 +833,10 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		m.runs.SetFocused(false)
 		m.tree.SetFocused(false)
 		m.graph.SetLoading(true)
+		m.updateGraphRunInfo()
 		m.graph.SetFocused(true)
 		m.updateLayout()
-		return m, m.fetchJobs(run.ID)
+		return m, m.fetchJobsForAttempt(run.ID, m.currentAttempt)
 
 	case ViewJobs:
 		if m.focus == FocusSidebar {
@@ -863,9 +862,10 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 				m.focus = FocusMain
 				m.tree.SetFocused(false)
 				m.graph.SetLoading(true)
+				m.updateGraphRunInfo()
 				m.graph.SetFocused(true)
 				m.updateLayout()
-				return m, m.fetchJobs(node.Run.ID)
+				return m, m.fetchJobsForAttempt(node.Run.ID, m.currentAttempt)
 			}
 			return m, nil
 		}
@@ -910,9 +910,10 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 				m.focus = FocusMain
 				m.tree.SetFocused(false)
 				m.graph.SetLoading(true)
+				m.updateGraphRunInfo()
 				m.graph.SetFocused(true)
 				m.updateLayout()
-				return m, m.fetchJobs(node.Run.ID)
+				return m, m.fetchJobsForAttempt(node.Run.ID, m.currentAttempt)
 			}
 			return m, nil
 		}
@@ -968,10 +969,7 @@ func (m Model) goBack() (tea.Model, tea.Cmd) {
 		m.tree.SetFocused(false)
 		m.runs.SetFocused(true)
 		m.updateLayout()
-		// Refresh runs when going back
-		wfID, _ := m.tree.SelectedWorkflow()
-		filter := m.filter.CurrentFilter(wfID)
-		return m, m.fetchRuns(filter)
+		return m, nil
 	}
 	return m, nil
 }
@@ -1004,9 +1002,10 @@ func (m Model) treeExpand() (tea.Model, tea.Cmd) {
 		m.runs.SetFocused(false)
 		m.tree.SetFocused(false)
 		m.graph.SetLoading(true)
+		m.updateGraphRunInfo()
 		m.graph.SetFocused(true)
 		m.updateLayout()
-		return m, m.fetchJobs(node.Run.ID)
+		return m, m.fetchJobsForAttempt(node.Run.ID, m.currentAttempt)
 	}
 	return m, nil
 }
@@ -1087,7 +1086,7 @@ func (m Model) switchRepo(owner, repo string) (tea.Model, tea.Cmd) {
 
 	return m, tea.Batch(
 		m.fetchWorkflows(),
-		m.fetchRuns(gh.RunFilter{}),
+		m.fetchRuns(gh.RunFilter{}, true),
 		m.tickCmd(),
 	)
 }
@@ -1236,6 +1235,17 @@ func (m Model) helpBarView() string {
 	}
 	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc:back  /:filter  r:refresh  b:sidebar  S:switch repo  O:browser  ?:help  q:quit" + extra)
 	return repo + keys
+}
+
+func (m *Model) updateGraphRunInfo() {
+	if m.currentRun == nil {
+		return
+	}
+	runName := fmt.Sprintf("#%d %s", m.currentRun.Number, m.currentRun.Branch)
+	if m.currentRun.RunAttempt > 1 {
+		runName = fmt.Sprintf("#%d·%d %s", m.currentRun.Number, m.currentAttempt, m.currentRun.Branch)
+	}
+	m.graph.SetRunInfo(runName, m.currentAttempt, m.currentRun.RunAttempt)
 }
 
 func (m Model) workflowPath(workflowID int64) string {

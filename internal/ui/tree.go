@@ -108,9 +108,7 @@ func (m *TreeModel) flatten() {
 			for _, child := range root.Children {
 				m.flat = append(m.flat, child)
 				if child.Expanded {
-					for _, grandchild := range child.Children {
-						m.flat = append(m.flat, grandchild)
-					}
+					m.flat = append(m.flat, child.Children...)
 				}
 			}
 		}
@@ -287,7 +285,8 @@ func (m TreeModel) View() string {
 
 		indent := strings.Repeat("  ", node.Depth)
 		prefix := ""
-		if node.Kind == NodeWorkflow {
+		switch node.Kind {
+		case NodeWorkflow:
 			if node.Workflow == nil {
 				// "All Workflows" node — no expand arrow
 				prefix = "  "
@@ -296,13 +295,13 @@ func (m TreeModel) View() string {
 			} else {
 				prefix = "▶ "
 			}
-		} else if node.Kind == NodeRun {
+		case NodeRun:
 			if node.Expanded {
 				prefix = "▼ "
 			} else {
 				prefix = "  "
 			}
-		} else {
+		default:
 			prefix = "  "
 		}
 

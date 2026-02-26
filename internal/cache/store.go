@@ -32,13 +32,13 @@ func Open(path string) (*Store, error) {
 
 	// Verify connection works
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("pinging cache db: %w", err)
 	}
 
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("migrating cache db: %w", err)
 	}
 	return s, nil

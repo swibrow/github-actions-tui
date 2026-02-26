@@ -38,7 +38,7 @@ func main() {
 	done := make(chan struct{})
 	if path, err := cache.DefaultPath(); err == nil {
 		if store, err := cache.Open(path); err == nil {
-			defer store.Close()
+			defer store.Close() //nolint:errcheck
 			cache.StartCleanup(store, 1*time.Hour, done)
 			ghClient = cache.NewCachedClient(client, store, owner, repo)
 			log.Printf("cache: using %s", path)

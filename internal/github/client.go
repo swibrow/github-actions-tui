@@ -220,7 +220,7 @@ func (c *Client) FetchJobs(ctx context.Context, runID int64) ([]WorkflowJob, err
 			job.StartedAt = j.GetStartedAt().Time
 		}
 		if j.CompletedAt != nil && j.StartedAt != nil {
-			job.Duration = j.GetCompletedAt().Time.Sub(j.GetStartedAt().Time)
+			job.Duration = j.GetCompletedAt().Sub(j.GetStartedAt().Time)
 		}
 		for _, s := range j.Steps {
 			job.Steps = append(job.Steps, JobStep{
@@ -256,7 +256,7 @@ func (c *Client) FetchJobsForAttempt(ctx context.Context, runID int64, attempt i
 			job.StartedAt = j.GetStartedAt().Time
 		}
 		if j.CompletedAt != nil && j.StartedAt != nil {
-			job.Duration = j.GetCompletedAt().Time.Sub(j.GetStartedAt().Time)
+			job.Duration = j.GetCompletedAt().Sub(j.GetStartedAt().Time)
 		}
 		for _, s := range j.Steps {
 			job.Steps = append(job.Steps, JobStep{
@@ -281,7 +281,7 @@ func (c *Client) FetchJobLogs(ctx context.Context, jobID int64) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("downloading job logs: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
