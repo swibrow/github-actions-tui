@@ -84,6 +84,9 @@ func (m *TreeModel) SetRunsForWorkflow(workflowID int64, runs []gh.WorkflowRun) 
 				r := runs[i]
 				icon := StatusIconPlain(r.Status, r.Conclusion)
 				label := fmt.Sprintf("%s #%d %s", icon, r.Number, r.Branch)
+				if r.RunAttempt > 1 {
+					label = fmt.Sprintf("%s #%d·%d %s", icon, r.Number, r.RunAttempt, r.Branch)
+				}
 				root.Children = append(root.Children, &TreeNode{
 					Kind:  NodeRun,
 					Label: label,

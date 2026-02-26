@@ -24,10 +24,12 @@ type WorkflowRun struct {
 	ID           int64
 	WorkflowID   int64
 	Number       int
+	RunAttempt   int
 	Name         string
 	Status       string
 	Conclusion   string
 	Branch       string
+	HeadSHA      string
 	Event        string
 	Actor        string
 	CreatedAt    time.Time
@@ -39,6 +41,7 @@ type WorkflowRun struct {
 type WorkflowJob struct {
 	ID         int64
 	RunID      int64
+	RunAttempt int
 	Name       string
 	Status     string
 	Conclusion string
@@ -75,6 +78,7 @@ type GitHubClient interface {
 	FetchWorkflows(ctx context.Context) ([]Workflow, error)
 	FetchRuns(ctx context.Context, filter RunFilter) ([]WorkflowRun, error)
 	FetchJobs(ctx context.Context, runID int64) ([]WorkflowJob, error)
+	FetchJobsForAttempt(ctx context.Context, runID int64, attempt int) ([]WorkflowJob, error)
 	FetchJobLogs(ctx context.Context, jobID int64) (string, error)
 	FetchRunsForWorkflow(ctx context.Context, workflowID int64, count int) ([]WorkflowRun, error)
 	FetchWorkflowYAML(ctx context.Context, path string) (map[string][]string, error)
@@ -171,10 +175,12 @@ func (c *Client) FetchRuns(ctx context.Context, filter RunFilter) ([]WorkflowRun
 			ID:         r.GetID(),
 			WorkflowID: r.GetWorkflowID(),
 			Number:     r.GetRunNumber(),
+			RunAttempt: r.GetRunAttempt(),
 			Name:       r.GetName(),
 			Status:     r.GetStatus(),
 			Conclusion: r.GetConclusion(),
 			Branch:     r.GetHeadBranch(),
+			HeadSHA:    r.GetHeadSHA(),
 			Event:      r.GetEvent(),
 			Actor:      r.GetActor().GetLogin(),
 			CreatedAt:  r.GetCreatedAt().Time,
@@ -205,6 +211,43 @@ func (c *Client) FetchJobs(ctx context.Context, runID int64) ([]WorkflowJob, err
 		job := WorkflowJob{
 			ID:         j.GetID(),
 			RunID:      j.GetRunID(),
+			RunAttempt: int(j.GetRunAttempt()),
+			Name:       j.GetName(),
+			Status:     j.GetStatus(),
+			Conclusion: j.GetConclusion(),
+		}
+		if j.StartedAt != nil {
+			job.StartedAt = j.GetStartedAt().Time
+		}
+		if j.CompletedAt != nil && j.StartedAt != nil {
+			job.Duration = j.GetCompletedAt().Time.Sub(j.GetStartedAt().Time)
+		}
+		for _, s := range j.Steps {
+			job.Steps = append(job.Steps, JobStep{
+				Name:       s.GetName(),
+				Status:     s.GetStatus(),
+				Conclusion: s.GetConclusion(),
+				Number:     s.GetNumber(),
+			})
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
+func (c *Client) FetchJobsForAttempt(ctx context.Context, runID int64, attempt int) ([]WorkflowJob, error) {
+	opts := &github.ListOptions{PerPage: 100}
+	result, _, err := c.gh.Actions.ListWorkflowJobsAttempt(ctx, c.owner, c.repo, runID, int64(attempt), opts)
+	if err != nil {
+		return nil, fmt.Errorf("fetching jobs for attempt %d: %w", attempt, err)
+	}
+
+	jobs := make([]WorkflowJob, 0, len(result.Jobs))
+	for _, j := range result.Jobs {
+		job := WorkflowJob{
+			ID:         j.GetID(),
+			RunID:      j.GetRunID(),
+			RunAttempt: int(j.GetRunAttempt()),
 			Name:       j.GetName(),
 			Status:     j.GetStatus(),
 			Conclusion: j.GetConclusion(),
@@ -262,10 +305,12 @@ func (c *Client) FetchRunsForWorkflow(ctx context.Context, workflowID int64, cou
 			ID:         r.GetID(),
 			WorkflowID: r.GetWorkflowID(),
 			Number:     r.GetRunNumber(),
+			RunAttempt: r.GetRunAttempt(),
 			Name:       r.GetName(),
 			Status:     r.GetStatus(),
 			Conclusion: r.GetConclusion(),
 			Branch:     r.GetHeadBranch(),
+			HeadSHA:    r.GetHeadSHA(),
 			Event:      r.GetEvent(),
 			Actor:      r.GetActor().GetLogin(),
 			CreatedAt:  r.GetCreatedAt().Time,

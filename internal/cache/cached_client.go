@@ -111,6 +111,11 @@ func (c *CachedClient) FetchJobs(ctx context.Context, runID int64) ([]gh.Workflo
 	return jobs, nil
 }
 
+// FetchJobsForAttempt passes through to the inner client (no caching for specific attempts).
+func (c *CachedClient) FetchJobsForAttempt(ctx context.Context, runID int64, attempt int) ([]gh.WorkflowJob, error) {
+	return c.inner.FetchJobsForAttempt(ctx, runID, attempt)
+}
+
 // FetchJobLogs checks cache first — biggest win since logs are immutable once completed.
 func (c *CachedClient) FetchJobLogs(ctx context.Context, jobID int64) (string, error) {
 	if content, ok := c.store.GetJobLogs(c.owner, c.repo, jobID); ok {
@@ -201,10 +206,12 @@ type runJSON struct {
 	ID           int64     `json:"id"`
 	WorkflowID   int64     `json:"workflow_id"`
 	Number       int       `json:"number"`
+	RunAttempt   int       `json:"run_attempt"`
 	Name         string    `json:"name"`
 	Status       string    `json:"status"`
 	Conclusion   string    `json:"conclusion"`
 	Branch       string    `json:"branch"`
+	HeadSHA      string    `json:"head_sha"`
 	Event        string    `json:"event"`
 	Actor        string    `json:"actor"`
 	CreatedAt    time.Time `json:"created_at"`
@@ -221,10 +228,12 @@ func MarshalRuns(runs []gh.WorkflowRun) ([]byte, error) {
 			ID:           r.ID,
 			WorkflowID:   r.WorkflowID,
 			Number:       r.Number,
+			RunAttempt:   r.RunAttempt,
 			Name:         r.Name,
 			Status:       r.Status,
 			Conclusion:   r.Conclusion,
 			Branch:       r.Branch,
+			HeadSHA:      r.HeadSHA,
 			Event:        r.Event,
 			Actor:        r.Actor,
 			CreatedAt:    r.CreatedAt,
@@ -248,10 +257,12 @@ func UnmarshalRuns(data []byte) ([]gh.WorkflowRun, error) {
 			ID:           jr.ID,
 			WorkflowID:   jr.WorkflowID,
 			Number:       jr.Number,
+			RunAttempt:   jr.RunAttempt,
 			Name:         jr.Name,
 			Status:       jr.Status,
 			Conclusion:   jr.Conclusion,
 			Branch:       jr.Branch,
+			HeadSHA:      jr.HeadSHA,
 			Event:        jr.Event,
 			Actor:        jr.Actor,
 			CreatedAt:    jr.CreatedAt,

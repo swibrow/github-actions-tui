@@ -26,6 +26,7 @@ func NewRunsModel() RunsModel {
 		{Title: "#", Width: 4},
 		{Title: "Action", Width: 16},
 		{Title: "Branch", Width: 16},
+		{Title: "SHA", Width: 7},
 		{Title: "Event", Width: 10},
 		{Title: "Actor", Width: 14},
 		{Title: "Age", Width: 6},
@@ -56,11 +57,20 @@ func (m *RunsModel) SetRuns(runs []gh.WorkflowRun) {
 	m.loading = false
 	rows := make([]table.Row, 0, len(runs))
 	for _, r := range runs {
+		num := fmt.Sprintf("%d", r.Number)
+		if r.RunAttempt > 1 {
+			num = fmt.Sprintf("%d·%d", r.Number, r.RunAttempt)
+		}
+		sha := ""
+		if len(r.HeadSHA) >= 7 {
+			sha = r.HeadSHA[:7]
+		}
 		rows = append(rows, table.Row{
 			StatusIconPlain(r.Status, r.Conclusion),
-			fmt.Sprintf("%d", r.Number),
+			num,
 			r.Name,
 			r.Branch,
+			sha,
 			r.Event,
 			r.Actor,
 			relativeTime(r.CreatedAt),
@@ -113,6 +123,7 @@ var runsColumns = []colSpec{
 	{title: "#", max: 4},
 	{title: "Action", max: 20, min: 8},
 	{title: "Branch", max: 30, min: 16},
+	{title: "SHA", max: 7},
 	{title: "Event", max: 10},
 	{title: "Actor", max: 20, min: 8},
 	{title: "Age", max: 6},

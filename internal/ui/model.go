@@ -106,6 +106,7 @@ type Model struct {
 	workflows      []gh.Workflow
 	currentRun     *gh.WorkflowRun
 	currentJob     *gh.WorkflowJob
+	currentAttempt int
 	sidebarVisible bool
 	confirmQuit    bool
 	yamlCache      map[string]map[string][]string // path -> job deps
@@ -160,6 +161,13 @@ func (m Model) fetchRuns(filter gh.RunFilter) tea.Cmd {
 func (m Model) fetchJobs(runID int64) tea.Cmd {
 	return func() tea.Msg {
 		jobs, err := m.client.FetchJobs(m.ctx, runID)
+		return JobsMsg{Jobs: jobs, Err: err}
+	}
+}
+
+func (m Model) fetchJobsForAttempt(runID int64, attempt int) tea.Cmd {
+	return func() tea.Msg {
+		jobs, err := m.client.FetchJobsForAttempt(m.ctx, runID, attempt)
 		return JobsMsg{Jobs: jobs, Err: err}
 	}
 }
@@ -296,7 +304,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		runName := ""
 		if m.currentRun != nil {
-			runName = fmt.Sprintf("#%d %s", m.currentRun.Number, m.currentRun.Branch)
+			if m.currentRun.RunAttempt > 1 {
+				runName = fmt.Sprintf("#%d·%d %s (attempt %d/%d)", m.currentRun.Number, m.currentAttempt, m.currentRun.Branch, m.currentAttempt, m.currentRun.RunAttempt)
+			} else {
+				runName = fmt.Sprintf("#%d %s", m.currentRun.Number, m.currentRun.Branch)
+			}
 		}
 
 		// Try to find workflow path for YAML-based deps
@@ -325,7 +337,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.view == ViewJobs && len(m.graph.jobs) > 0 {
 			runName := ""
 			if m.currentRun != nil {
-				runName = fmt.Sprintf("#%d %s", m.currentRun.Number, m.currentRun.Branch)
+				if m.currentRun.RunAttempt > 1 {
+					runName = fmt.Sprintf("#%d·%d %s (attempt %d/%d)", m.currentRun.Number, m.currentAttempt, m.currentRun.Branch, m.currentAttempt, m.currentRun.RunAttempt)
+				} else {
+					runName = fmt.Sprintf("#%d %s", m.currentRun.Number, m.currentRun.Branch)
+				}
 			}
 			m.graph.SetJobs(m.graph.jobs, msg.Deps, runName)
 		}
@@ -376,7 +392,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.fetchRuns(filter))
 		case ViewJobs:
 			if m.currentRun != nil {
-				cmds = append(cmds, m.fetchJobs(m.currentRun.ID))
+				if m.currentAttempt > 0 && m.currentAttempt < m.currentRun.RunAttempt {
+					cmds = append(cmds, m.fetchJobsForAttempt(m.currentRun.ID, m.currentAttempt))
+				} else {
+					cmds = append(cmds, m.fetchJobs(m.currentRun.ID))
+				}
 			}
 		case ViewLogs:
 			if m.currentJob != nil && m.logs.IsJobInProgress() && m.currentRun != nil {
@@ -724,9 +744,28 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, Keys.Enter):
 			return m.handleEnter()
 
+		case key.Matches(msg, Keys.PrevAttempt):
+			if m.currentRun != nil && m.currentAttempt > 1 {
+				m.currentAttempt--
+				m.graph.SetLoading(true)
+				return m, m.fetchJobsForAttempt(m.currentRun.ID, m.currentAttempt)
+			}
+			return m, nil
+
+		case key.Matches(msg, Keys.NextAttempt):
+			if m.currentRun != nil && m.currentAttempt < m.currentRun.RunAttempt {
+				m.currentAttempt++
+				m.graph.SetLoading(true)
+				return m, m.fetchJobsForAttempt(m.currentRun.ID, m.currentAttempt)
+			}
+			return m, nil
+
 		case key.Matches(msg, Keys.Refresh):
 			if m.currentRun != nil {
 				m.graph.SetLoading(true)
+				if m.currentAttempt < m.currentRun.RunAttempt {
+					return m, m.fetchJobsForAttempt(m.currentRun.ID, m.currentAttempt)
+				}
 				return m, m.fetchJobs(m.currentRun.ID)
 			}
 			return m, nil
@@ -772,6 +811,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				run := node.Run
+				m.currentAttempt = run.RunAttempt
 				m.currentRun = run
 				m.view = ViewJobs
 				m.focus = FocusMain
@@ -788,6 +828,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		if run == nil {
 			return m, nil
 		}
+		m.currentAttempt = run.RunAttempt
 		m.currentRun = run
 		m.view = ViewJobs
 		m.focus = FocusMain
@@ -817,6 +858,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 				if node.Run == nil {
 					return m, nil
 				}
+				m.currentAttempt = node.Run.RunAttempt
 				m.currentRun = node.Run
 				m.focus = FocusMain
 				m.tree.SetFocused(false)
@@ -862,6 +904,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				// Switch to that run's jobs view
+				m.currentAttempt = node.Run.RunAttempt
 				m.currentRun = node.Run
 				m.view = ViewJobs
 				m.focus = FocusMain
@@ -954,6 +997,7 @@ func (m Model) treeExpand() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		// Drill into jobs for this run
+		m.currentAttempt = node.Run.RunAttempt
 		m.currentRun = node.Run
 		m.view = ViewJobs
 		m.focus = FocusMain
@@ -1022,6 +1066,7 @@ func (m Model) switchRepo(owner, repo string) (tea.Model, tea.Cmd) {
 	m.focus = FocusMain
 	m.currentRun = nil
 	m.currentJob = nil
+	m.currentAttempt = 0
 	m.err = nil
 	m.showHelp = false
 	m.confirmQuit = false
@@ -1185,7 +1230,11 @@ func (m Model) View() string {
 
 func (m Model) helpBarView() string {
 	repo := styleRepoIndicator.Render(m.repoOwner + "/" + m.repoName)
-	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc:back  /:filter  r:refresh  b:sidebar  S:switch repo  O:browser  ?:help  q:quit")
+	extra := ""
+	if m.view == ViewJobs && m.currentRun != nil && m.currentRun.RunAttempt > 1 {
+		extra = "  [/]:attempt"
+	}
+	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc:back  /:filter  r:refresh  b:sidebar  S:switch repo  O:browser  ?:help  q:quit" + extra)
 	return repo + keys
 }
 
@@ -1239,6 +1288,9 @@ Actions:
   O             Open actions in browser
   ?             Toggle help
   q             Quit
+
+Jobs View:
+  [ / ]         Previous / next run attempt
 
 Logs:
   /             Search logs
