@@ -150,6 +150,28 @@ func (c *CachedClient) FetchWorkflowYAML(ctx context.Context, path string) (map[
 	return deps, nil
 }
 
+func (c *CachedClient) SwitchRepo(owner, repo string) {
+	c.owner = owner
+	c.repo = repo
+	c.inner.SwitchRepo(owner, repo)
+}
+
+func (c *CachedClient) ListUserRepos(ctx context.Context) ([]gh.Repository, error) {
+	return c.inner.ListUserRepos(ctx)
+}
+
+func (c *CachedClient) ListUserOrgs(ctx context.Context) ([]string, error) {
+	return c.inner.ListUserOrgs(ctx)
+}
+
+func (c *CachedClient) ListOrgRepos(ctx context.Context, org string) ([]gh.Repository, error) {
+	return c.inner.ListOrgRepos(ctx, org)
+}
+
+func (c *CachedClient) SearchRepos(ctx context.Context, query string) ([]gh.Repository, error) {
+	return c.inner.SearchRepos(ctx, query)
+}
+
 // --- Helpers ---
 
 func (c *CachedClient) cacheRun(r gh.WorkflowRun) {

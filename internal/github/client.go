@@ -54,6 +54,14 @@ type JobStep struct {
 	Number     int64
 }
 
+type Repository struct {
+	Owner       string
+	Name        string
+	FullName    string
+	Description string
+	Private     bool
+}
+
 type RunFilter struct {
 	WorkflowID int64
 	Branch     string
@@ -70,6 +78,11 @@ type GitHubClient interface {
 	FetchJobLogs(ctx context.Context, jobID int64) (string, error)
 	FetchRunsForWorkflow(ctx context.Context, workflowID int64, count int) ([]WorkflowRun, error)
 	FetchWorkflowYAML(ctx context.Context, path string) (map[string][]string, error)
+	SwitchRepo(owner, repo string)
+	ListUserRepos(ctx context.Context) ([]Repository, error)
+	ListUserOrgs(ctx context.Context) ([]string, error)
+	ListOrgRepos(ctx context.Context, org string) ([]Repository, error)
+	SearchRepos(ctx context.Context, query string) ([]Repository, error)
 }
 
 type Client struct {
@@ -282,6 +295,102 @@ func (c *Client) FetchFileContent(ctx context.Context, path string) ([]byte, err
 		return nil, fmt.Errorf("decoding file content: %w", err)
 	}
 	return []byte(content), nil
+}
+
+func (c *Client) SwitchRepo(owner, repo string) {
+	c.owner = owner
+	c.repo = repo
+}
+
+func (c *Client) ListUserRepos(ctx context.Context) ([]Repository, error) {
+	opts := &github.RepositoryListByAuthenticatedUserOptions{
+		Sort:        "updated",
+		ListOptions: github.ListOptions{PerPage: 100},
+	}
+	var all []Repository
+	for {
+		repos, resp, err := c.gh.Repositories.ListByAuthenticatedUser(ctx, opts)
+		if err != nil {
+			return nil, fmt.Errorf("listing user repos: %w", err)
+		}
+		for _, r := range repos {
+			all = append(all, Repository{
+				Owner:       r.GetOwner().GetLogin(),
+				Name:        r.GetName(),
+				FullName:    r.GetFullName(),
+				Description: r.GetDescription(),
+				Private:     r.GetPrivate(),
+			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return all, nil
+}
+
+func (c *Client) ListUserOrgs(ctx context.Context) ([]string, error) {
+	opts := &github.ListOptions{PerPage: 100}
+	orgs, _, err := c.gh.Organizations.List(ctx, "", opts)
+	if err != nil {
+		return nil, fmt.Errorf("listing orgs: %w", err)
+	}
+	names := make([]string, 0, len(orgs))
+	for _, o := range orgs {
+		names = append(names, o.GetLogin())
+	}
+	return names, nil
+}
+
+func (c *Client) ListOrgRepos(ctx context.Context, org string) ([]Repository, error) {
+	opts := &github.RepositoryListByOrgOptions{
+		Sort:        "updated",
+		ListOptions: github.ListOptions{PerPage: 100},
+	}
+	var all []Repository
+	for {
+		repos, resp, err := c.gh.Repositories.ListByOrg(ctx, org, opts)
+		if err != nil {
+			return nil, fmt.Errorf("listing org repos: %w", err)
+		}
+		for _, r := range repos {
+			all = append(all, Repository{
+				Owner:       r.GetOwner().GetLogin(),
+				Name:        r.GetName(),
+				FullName:    r.GetFullName(),
+				Description: r.GetDescription(),
+				Private:     r.GetPrivate(),
+			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return all, nil
+}
+
+func (c *Client) SearchRepos(ctx context.Context, query string) ([]Repository, error) {
+	opts := &github.SearchOptions{
+		Sort:        "stars",
+		ListOptions: github.ListOptions{PerPage: 30},
+	}
+	result, _, err := c.gh.Search.Repositories(ctx, query, opts)
+	if err != nil {
+		return nil, fmt.Errorf("searching repos: %w", err)
+	}
+	repos := make([]Repository, 0, len(result.Repositories))
+	for _, r := range result.Repositories {
+		repos = append(repos, Repository{
+			Owner:       r.GetOwner().GetLogin(),
+			Name:        r.GetName(),
+			FullName:    r.GetFullName(),
+			Description: r.GetDescription(),
+			Private:     r.GetPrivate(),
+		})
+	}
+	return repos, nil
 }
 
 func HasActiveRuns(runs []WorkflowRun) bool {

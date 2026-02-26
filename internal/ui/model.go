@@ -3,6 +3,8 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -63,15 +65,36 @@ type TickMsg time.Time
 
 type GGTimeoutMsg struct{}
 
+type RepoListMsg struct {
+	Repos []gh.Repository
+	Err   error
+}
+
+type UserOrgsMsg struct {
+	Orgs []string
+	Err  error
+}
+
+type OrgReposMsg struct {
+	Repos []gh.Repository
+	Err   error
+}
+
+type RepoSearchMsg struct {
+	Repos []gh.Repository
+	Err   error
+}
+
 type Model struct {
 	client gh.GitHubClient
 	ctx    context.Context
 
-	tree   TreeModel
-	runs   RunsModel
-	graph  GraphModel
-	logs   LogsModel
-	filter FilterModel
+	tree       TreeModel
+	runs       RunsModel
+	graph      GraphModel
+	logs       LogsModel
+	filter     FilterModel
+	repoPicker RepoPickerModel
 
 	view           ViewState
 	focus          FocusPane
@@ -86,9 +109,11 @@ type Model struct {
 	sidebarVisible bool
 	confirmQuit    bool
 	yamlCache      map[string]map[string][]string // path -> job deps
+	repoOwner      string
+	repoName       string
 }
 
-func NewModel(client gh.GitHubClient) Model {
+func NewModel(client gh.GitHubClient, owner, repo string) Model {
 	runs := NewRunsModel()
 	runs.SetFocused(true)
 
@@ -100,10 +125,13 @@ func NewModel(client gh.GitHubClient) Model {
 		graph:          NewGraphModel(),
 		logs:           NewLogsModel(),
 		filter:         NewFilterModel(),
+		repoPicker:     NewRepoPickerModel(),
 		view:           ViewWorkflowRuns,
 		focus:          FocusMain,
 		sidebarVisible: true,
 		yamlCache:      make(map[string]map[string][]string),
+		repoOwner:      owner,
+		repoName:       repo,
 	}
 }
 
@@ -157,6 +185,51 @@ func (m Model) fetchJobLogs(jobID int64) tea.Cmd {
 	}
 }
 
+func (m Model) fetchUserRepos() tea.Cmd {
+	return func() tea.Msg {
+		repos, err := m.client.ListUserRepos(m.ctx)
+		return RepoListMsg{Repos: repos, Err: err}
+	}
+}
+
+func (m Model) fetchUserOrgs() tea.Cmd {
+	return func() tea.Msg {
+		orgs, err := m.client.ListUserOrgs(m.ctx)
+		return UserOrgsMsg{Orgs: orgs, Err: err}
+	}
+}
+
+func (m Model) fetchOrgRepos(org string) tea.Cmd {
+	return func() tea.Msg {
+		repos, err := m.client.ListOrgRepos(m.ctx, org)
+		return OrgReposMsg{Repos: repos, Err: err}
+	}
+}
+
+func (m Model) searchRepos(query string) tea.Cmd {
+	return func() tea.Msg {
+		repos, err := m.client.SearchRepos(m.ctx, query)
+		return RepoSearchMsg{Repos: repos, Err: err}
+	}
+}
+
+func (m Model) openActionsInBrowser() tea.Cmd {
+	url := fmt.Sprintf("https://github.com/%s/%s/actions", m.repoOwner, m.repoName)
+	return func() tea.Msg {
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "darwin":
+			cmd = exec.Command("open", url)
+		case "linux":
+			cmd = exec.Command("xdg-open", url)
+		default:
+			cmd = exec.Command("open", url)
+		}
+		_ = cmd.Start()
+		return nil
+	}
+}
+
 // fetchJobStatus fetches the current job from the run's jobs list to get live step status.
 func (m Model) fetchJobStatus(runID, jobID int64) tea.Cmd {
 	return func() tea.Msg {
@@ -195,6 +268,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.repoPicker.SetSize(msg.Width, msg.Height)
 		m.updateLayout()
 		return m, nil
 
@@ -285,9 +359,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		jobName := msg.Job.Name
 
 		if msg.Job.Status == "completed" {
-			// Job just finished — fetch real logs
-			m.logs.SetLoading(true)
-			return m, m.fetchJobLogs(msg.Job.ID)
+			// Job just finished — update steps with final status, user stays in step view
+			m.logs.SetSteps(msg.Job.Steps, jobName, msg.Job.Status)
+			return m, nil
 		}
 		// Still in progress — update step display
 		m.logs.SetSteps(msg.Job.Steps, jobName, msg.Job.Status)
@@ -305,14 +379,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, m.fetchJobs(m.currentRun.ID))
 			}
 		case ViewLogs:
-			if m.currentJob != nil {
-				if m.logs.IsJobInProgress() && m.currentRun != nil {
-					// Job still running — poll for step status updates
-					cmds = append(cmds, m.fetchJobStatus(m.currentRun.ID, m.currentJob.ID))
-				} else {
-					// Job completed — refresh logs
-					cmds = append(cmds, m.fetchJobLogs(m.currentJob.ID))
-				}
+			if m.currentJob != nil && m.logs.IsJobInProgress() && m.currentRun != nil {
+				// Job still running — poll for step status updates
+				cmds = append(cmds, m.fetchJobStatus(m.currentRun.ID, m.currentJob.ID))
 			}
 		}
 		return m, tea.Batch(cmds...)
@@ -323,6 +392,54 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.tree.SetRunsForWorkflow(msg.WorkflowID, msg.Runs)
+		return m, nil
+
+	case RepoListMsg:
+		if msg.Err != nil {
+			// Non-fatal: just stop loading indicator
+			m.repoPicker.loading = false
+			return m, nil
+		}
+		m.repoPicker.AddRepos(msg.Repos)
+		return m, nil
+
+	case UserOrgsMsg:
+		if msg.Err != nil {
+			return m, nil
+		}
+		cmds := make([]tea.Cmd, 0, len(msg.Orgs))
+		for _, org := range msg.Orgs {
+			cmds = append(cmds, m.fetchOrgRepos(org))
+		}
+		return m, tea.Batch(cmds...)
+
+	case OrgReposMsg:
+		if msg.Err != nil {
+			return m, nil
+		}
+		m.repoPicker.AddRepos(msg.Repos)
+		return m, nil
+
+	case RepoSearchMsg:
+		if msg.Err != nil {
+			m.repoPicker.searching = false
+			return m, nil
+		}
+		m.repoPicker.SetSearchResults(msg.Repos)
+		return m, nil
+
+	case RepoSearchTriggerMsg:
+		// Only fire search if query still matches (debounce)
+		if m.repoPicker.Visible() && m.repoPicker.InputValue() == msg.Query {
+			m.repoPicker.searching = true
+			return m, m.searchRepos(msg.Query)
+		}
+		return m, nil
+
+	case RepoSelectedMsg:
+		return m.switchRepo(msg.Owner, msg.Repo)
+
+	case RepoCancelledMsg:
 		return m, nil
 
 	case GGTimeoutMsg:
@@ -342,6 +459,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleMouse(msg)
 
 	case tea.KeyMsg:
+		// Repo picker captures all keys when visible
+		if m.repoPicker.Visible() {
+			var cmd tea.Cmd
+			m.repoPicker, cmd = m.repoPicker.Update(msg)
+			return m, cmd
+		}
+
 		// Filter captures all keys when visible
 		if m.filter.Visible() {
 			var cmd tea.Cmd
@@ -453,12 +577,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global keys
 	switch {
 	case key.Matches(msg, Keys.Quit):
-		if m.view == ViewWorkflowRuns {
-			m.confirmQuit = true
-			return m, nil
-		}
-		// In other views, treat q as back
-		return m.goBack()
+		m.confirmQuit = true
+		return m, nil
 
 	case key.Matches(msg, Keys.Help):
 		m.showHelp = !m.showHelp
@@ -469,6 +589,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.showHelp = false
 			return m, nil
 		}
+		if m.view == ViewWorkflowRuns {
+			// esc at top level does nothing
+			return m, nil
+		}
 		return m.goBack()
 
 	case key.Matches(msg, Keys.SwitchPane):
@@ -476,6 +600,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.toggleFocus()
 		}
 		return m, nil
+
+	case key.Matches(msg, Keys.SwitchRepo):
+		m.repoPicker.Show()
+		m.repoPicker.SetSize(m.width, m.height)
+		return m, tea.Batch(m.fetchUserRepos(), m.fetchUserOrgs())
+
+	case key.Matches(msg, Keys.OpenBrowser):
+		return m, m.openActionsInBrowser()
 	}
 
 	// Sidebar tree navigation: h/l expand/collapse/drill-in
@@ -512,6 +644,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, Keys.Enter):
+			if m.focus == FocusMain && m.logs.InStepView() && m.currentJob != nil {
+				m.logs.SetScrollToStep(m.logs.StepCursor())
+				m.logs.SetLoading(true)
+				return m, m.fetchJobLogs(m.currentJob.ID)
+			}
 			return m, nil
 		}
 
@@ -702,13 +839,9 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		m.logs.SetFocused(true)
 		m.updateLayout()
 
-		if job.Status != "completed" {
-			// Job is in-progress — show step status, poll for updates
-			m.logs.SetSteps(job.Steps, job.Name, job.Status)
-			return m, nil
-		}
-		m.logs.SetLoading(true)
-		return m, m.fetchJobLogs(job.ID)
+		// Always show step view first — user presses Enter to fetch full logs
+		m.logs.SetSteps(job.Steps, job.Name, job.Status)
+		return m, nil
 
 	case ViewLogs:
 		if m.focus == FocusSidebar {
@@ -774,6 +907,10 @@ func (m Model) toggleFocus() (tea.Model, tea.Cmd) {
 func (m Model) goBack() (tea.Model, tea.Cmd) {
 	switch m.view {
 	case ViewLogs:
+		// If viewing log content, go back to step view first
+		if !m.logs.InStepView() && m.logs.BackToSteps() {
+			return m, nil
+		}
 		m.view = ViewJobs
 		m.focus = FocusMain
 		m.logs.SetFocused(false)
@@ -792,9 +929,6 @@ func (m Model) goBack() (tea.Model, tea.Cmd) {
 		wfID, _ := m.tree.SelectedWorkflow()
 		filter := m.filter.CurrentFilter(wfID)
 		return m, m.fetchRuns(filter)
-	case ViewWorkflowRuns:
-		m.confirmQuit = true
-		return m, nil
 	}
 	return m, nil
 }
@@ -878,6 +1012,41 @@ func (m Model) updateFocused(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m Model) switchRepo(owner, repo string) (tea.Model, tea.Cmd) {
+	m.client.SwitchRepo(owner, repo)
+	m.repoOwner = owner
+	m.repoName = repo
+
+	// Full state reset
+	m.view = ViewWorkflowRuns
+	m.focus = FocusMain
+	m.currentRun = nil
+	m.currentJob = nil
+	m.err = nil
+	m.showHelp = false
+	m.confirmQuit = false
+	m.pendingG = false
+	m.workflows = nil
+	m.yamlCache = make(map[string]map[string][]string)
+
+	// Recreate sub-models
+	runs := NewRunsModel()
+	runs.SetFocused(true)
+	m.runs = runs
+	m.tree = NewTreeModel()
+	m.graph = NewGraphModel()
+	m.logs = NewLogsModel()
+	m.filter = NewFilterModel()
+
+	m.updateLayout()
+
+	return m, tea.Batch(
+		m.fetchWorkflows(),
+		m.fetchRuns(gh.RunFilter{}),
+		m.tickCmd(),
+	)
+}
+
 func (m *Model) updateLayout() {
 	if m.width == 0 || m.height == 0 {
 		return
@@ -947,6 +1116,11 @@ func (m Model) View() string {
 		return m.helpView()
 	}
 
+	// Repo picker overlay
+	if m.repoPicker.Visible() {
+		return m.repoPicker.View(m.width, m.height)
+	}
+
 	var output string
 
 	switch m.view {
@@ -1010,7 +1184,9 @@ func (m Model) View() string {
 }
 
 func (m Model) helpBarView() string {
-	return styleHelpBar.Render("↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc:back  /:filter  r:refresh  b:sidebar  ?:help  q:quit")
+	repo := styleRepoIndicator.Render(m.repoOwner + "/" + m.repoName)
+	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc:back  /:filter  r:refresh  b:sidebar  S:switch repo  O:browser  ?:help  q:quit")
+	return repo + keys
 }
 
 func (m Model) workflowPath(workflowID int64) string {
@@ -1059,6 +1235,8 @@ Actions:
   /             Open filter bar / search logs
   r             Refresh data
   b             Toggle sidebar
+  S             Switch repository
+  O             Open actions in browser
   ?             Toggle help
   q             Quit
 

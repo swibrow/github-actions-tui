@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -72,4 +73,17 @@ func clamp(v, lo, hi int) int {
 		return hi
 	}
 	return v
+}
+
+// truncateToFit hard-caps the rendered string to exactly maxH lines.
+// This prevents terminal scrolling when lipgloss renders content larger than the terminal.
+func truncateToFit(s string, maxW, maxH int) string {
+	if maxH <= 0 {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) > maxH {
+		lines = lines[:maxH]
+	}
+	return strings.Join(lines, "\n")
 }

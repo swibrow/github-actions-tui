@@ -47,7 +47,7 @@ func main() {
 		}
 	}
 
-	m := ui.NewModel(ghClient)
+	m := ui.NewModel(ghClient, owner, repo)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

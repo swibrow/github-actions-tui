@@ -3,18 +3,22 @@ package ui
 import "github.com/charmbracelet/bubbles/key"
 
 type KeyMap struct {
-	Up      key.Binding
-	Down    key.Binding
-	Left    key.Binding
-	Right   key.Binding
-	Top     key.Binding
-	Bottom  key.Binding
-	Enter   key.Binding
-	Back    key.Binding
-	Filter  key.Binding
-	Refresh key.Binding
-	Help    key.Binding
-	Quit    key.Binding
+	Up            key.Binding
+	Down          key.Binding
+	Left          key.Binding
+	Right         key.Binding
+	SwitchPane    key.Binding
+	Top           key.Binding
+	Bottom        key.Binding
+	Enter         key.Binding
+	Back          key.Binding
+	Filter        key.Binding
+	Refresh       key.Binding
+	Help          key.Binding
+	Quit          key.Binding
+	ToggleSidebar key.Binding
+	SwitchRepo    key.Binding
+	OpenBrowser   key.Binding
 }
 
 var Keys = KeyMap{
@@ -33,6 +37,10 @@ var Keys = KeyMap{
 	Right: key.NewBinding(
 		key.WithKeys("l", "right"),
 		key.WithHelp("→/l", ""),
+	),
+	SwitchPane: key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "switch pane"),
 	),
 	Top: key.NewBinding(
 		key.WithKeys("g"),
@@ -66,10 +74,22 @@ var Keys = KeyMap{
 		key.WithKeys("q"),
 		key.WithHelp("q", "quit"),
 	),
+	ToggleSidebar: key.NewBinding(
+		key.WithKeys("b"),
+		key.WithHelp("b", "toggle sidebar"),
+	),
+	SwitchRepo: key.NewBinding(
+		key.WithKeys("S"),
+		key.WithHelp("S", "switch repo"),
+	),
+	OpenBrowser: key.NewBinding(
+		key.WithKeys("O"),
+		key.WithHelp("O", "open in browser"),
+	),
 }
 
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Left, k.Enter, k.Back, k.Filter, k.Refresh, k.Help, k.Quit}
+	return []key.Binding{k.Up, k.Left, k.Enter, k.Back, k.Filter, k.Refresh, k.ToggleSidebar, k.SwitchRepo, k.Help, k.Quit}
 }
 
 func (k KeyMap) FullHelp() [][]key.Binding {

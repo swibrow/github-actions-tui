@@ -23,12 +23,13 @@ type RunsModel struct {
 func NewRunsModel() RunsModel {
 	columns := []table.Column{
 		{Title: " ", Width: 2},
-		{Title: "#", Width: 6},
+		{Title: "#", Width: 4},
+		{Title: "Action", Width: 16},
 		{Title: "Branch", Width: 16},
-		{Title: "Event", Width: 12},
+		{Title: "Event", Width: 10},
 		{Title: "Actor", Width: 14},
-		{Title: "Age", Width: 8},
-		{Title: "Duration", Width: 8},
+		{Title: "Age", Width: 6},
+		{Title: "Dur", Width: 6},
 	}
 	t := table.New(
 		table.WithColumns(columns),
@@ -56,11 +57,12 @@ func (m *RunsModel) SetRuns(runs []gh.WorkflowRun) {
 	rows := make([]table.Row, 0, len(runs))
 	for _, r := range runs {
 		rows = append(rows, table.Row{
-			StatusIcon(r.Status, r.Conclusion),
-			fmt.Sprintf("#%d", r.Number),
-			truncate(r.Branch, 16),
+			StatusIconPlain(r.Status, r.Conclusion),
+			fmt.Sprintf("%d", r.Number),
+			r.Name,
+			r.Branch,
 			r.Event,
-			truncate(r.Actor, 14),
+			r.Actor,
 			relativeTime(r.CreatedAt),
 			formatDuration(r.Duration),
 		})
@@ -69,6 +71,7 @@ func (m *RunsModel) SetRuns(runs []gh.WorkflowRun) {
 	if len(rows) > 0 {
 		m.table.GotoTop()
 	}
+	m.resizeColumns()
 }
 
 func (m RunsModel) SelectedRun() *gh.WorkflowRun {
@@ -97,29 +100,107 @@ func (m *RunsModel) SetTitle(title string) {
 	m.title = title
 }
 
+// colSpec defines a column with its title, max width, and optional min width.
+// Columns with min > 0 are flexible and will shrink when the table is too narrow.
+type colSpec struct {
+	title string
+	max   int
+	min   int // 0 = fixed (won't shrink)
+}
+
+var runsColumns = []colSpec{
+	{title: " ", max: 2},
+	{title: "#", max: 4},
+	{title: "Action", max: 20, min: 8},
+	{title: "Branch", max: 30, min: 16},
+	{title: "Event", max: 10},
+	{title: "Actor", max: 20, min: 8},
+	{title: "Age", max: 6},
+	{title: "Duration", max: 8, min: 3},
+}
+
 func (m *RunsModel) SetSize(width, height int) {
 	m.width = width
 	m.height = height
-	m.table.SetWidth(width - 4)
-	m.table.SetHeight(height - 5) // border + title + header
+	tableW := width - 4
+	if tableW < 10 {
+		tableW = 10
+	}
+	tableH := height - 5 // border + title + header
+	if tableH < 1 {
+		tableH = 1
+	}
+	m.table.SetWidth(tableW)
+	m.table.SetHeight(tableH)
+	m.resizeColumns()
+}
 
-	// Auto-size columns based on available width
-	available := width - 8 // borders + padding
-	fixed := 2 + 6 + 12 + 8 + 8
-	remaining := available - fixed
-	branchW := clamp(remaining*40/100, 10, 30)
-	actorW := remaining - branchW
-	actorW = clamp(actorW, 8, 20)
+func (m *RunsModel) resizeColumns() {
+	if m.width == 0 {
+		return
+	}
 
-	m.table.SetColumns([]table.Column{
-		{Title: " ", Width: 2},
-		{Title: "#", Width: 6},
-		{Title: "Branch", Width: branchW},
-		{Title: "Event", Width: 12},
-		{Title: "Actor", Width: actorW},
-		{Title: "Age", Width: 8},
-		{Title: "Duration", Width: 8},
-	})
+	tableW := m.width - 4 // border + padding
+	if tableW < 10 {
+		tableW = 10
+	}
+
+	// Measure max content width per column from actual data
+	rows := m.table.Rows()
+	colWidths := make([]int, len(runsColumns))
+	for i, col := range runsColumns {
+		colWidths[i] = len(col.title)
+	}
+	for _, row := range rows {
+		for i, cell := range row {
+			if i < len(colWidths) && len(cell) > colWidths[i] {
+				colWidths[i] = len(cell)
+			}
+		}
+	}
+	// Cap each column at its max
+	for i, col := range runsColumns {
+		if colWidths[i] > col.max {
+			colWidths[i] = col.max
+		}
+	}
+
+	// If total exceeds available width, shrink flexible columns
+	total := 0
+	for _, w := range colWidths {
+		total += w
+	}
+	// Each cell has Padding(0,1) = 2 chars overhead per column
+	cellPadding := len(colWidths) * 2
+	totalRendered := total + cellPadding
+
+	if totalRendered > tableW {
+		excess := totalRendered - tableW
+		// Shrink flexible columns (those with min > 0), largest first
+		for excess > 0 {
+			shrunk := false
+			for i, col := range runsColumns {
+				if col.min > 0 && colWidths[i] > col.min && excess > 0 {
+					colWidths[i]--
+					excess--
+					shrunk = true
+				}
+			}
+			if !shrunk {
+				break // all flexible columns at their minimum
+			}
+		}
+	}
+
+	cols := make([]table.Column, len(runsColumns))
+	for i, col := range runsColumns {
+		title := col.title
+		if len(title) > colWidths[i] {
+			title = title[:colWidths[i]]
+		}
+		cols[i] = table.Column{Title: title, Width: colWidths[i]}
+	}
+	m.table.SetColumns(cols)
 }
 
 func (m RunsModel) Update(msg tea.Msg) (RunsModel, tea.Cmd) {
