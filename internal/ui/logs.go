@@ -5,10 +5,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	gh "github.com/swibrow/github-actions-tui/internal/github"
 )
 
@@ -70,7 +70,7 @@ func (m *LogsModel) SetContent(content, jobName string) {
 
 	if isRefresh {
 		// Preserve scroll position and search on poll refresh
-		yOff := m.viewport.YOffset
+		yOff := m.viewport.YOffset()
 		m.rawContent = content
 		m.applyContent()
 		m.viewport.SetYOffset(yOff)
@@ -397,12 +397,11 @@ func (m *LogsModel) SetSize(width, height int) {
 		innerW = 10
 	}
 	if !m.ready {
-		m.viewport = viewport.New(innerW, vpH)
-		m.viewport.MouseWheelEnabled = true
+		m.viewport = viewport.New(viewport.WithWidth(innerW), viewport.WithHeight(vpH))
 		m.ready = true
 	} else {
-		m.viewport.Width = innerW
-		m.viewport.Height = vpH
+		m.viewport.SetWidth(innerW)
+		m.viewport.SetHeight(vpH)
 	}
 }
 
@@ -470,7 +469,7 @@ func (m *LogsModel) recalcViewportHeight() {
 	if vpH < 1 {
 		vpH = 1
 	}
-	m.viewport.Height = vpH
+	m.viewport.SetHeight(vpH)
 }
 
 // StartSearch opens the search input.
@@ -485,7 +484,7 @@ func (m *LogsModel) StartSearch() {
 func (m *LogsModel) ToggleTimestamps() {
 	m.showTimestamps = !m.showTimestamps
 	// Remember scroll position
-	yOff := m.viewport.YOffset
+	yOff := m.viewport.YOffset()
 	m.applyContent()
 	m.viewport.SetYOffset(yOff)
 }

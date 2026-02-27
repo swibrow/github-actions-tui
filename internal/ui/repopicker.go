@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/sahilm/fuzzy"
 	gh "github.com/swibrow/github-actions-tui/internal/github"
 )
@@ -54,7 +54,7 @@ func NewRepoPickerModel() RepoPickerModel {
 	ti := textinput.New()
 	ti.Placeholder = "Search repos..."
 	ti.CharLimit = 100
-	ti.Width = 40
+	ti.SetWidth(40)
 	return RepoPickerModel{input: ti}
 }
 
@@ -90,7 +90,7 @@ func (m *RepoPickerModel) SetSize(w, h int) {
 	if inputW > 60 {
 		inputW = 60
 	}
-	m.input.Width = inputW
+	m.input.SetWidth(inputW)
 }
 
 // AddRepos merges new repos into the list, deduplicating by FullName.

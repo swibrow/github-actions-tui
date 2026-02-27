@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/swibrow/github-actions-tui/internal/cache"
 	gh "github.com/swibrow/github-actions-tui/internal/github"
 	"github.com/swibrow/github-actions-tui/internal/ui"
@@ -55,7 +55,7 @@ func main() {
 	}
 
 	m := ui.NewModel(ghClient, owner, repo)
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

@@ -7,9 +7,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	gh "github.com/swibrow/github-actions-tui/internal/github"
 )
 
@@ -496,9 +496,10 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Pass mouse events to the focused component for scroll support
 	switch m.view {
 	case ViewLogs:
+		mouse := msg.Mouse()
 		if m.sidebarVisible {
 			sidebarW := clamp(m.width/4, 20, 35)
-			if msg.X < sidebarW {
+			if mouse.X < sidebarW {
 				if m.focus != FocusSidebar {
 					m.focus = FocusSidebar
 					m.tree.SetFocused(true)
@@ -518,9 +519,10 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.logs, cmd = m.logs.Update(msg)
 		return m, cmd
 	case ViewJobs:
+		mouse := msg.Mouse()
 		if m.sidebarVisible {
 			sidebarW := clamp(m.width/4, 20, 35)
-			if msg.X < sidebarW {
+			if mouse.X < sidebarW {
 				if m.focus != FocusSidebar {
 					m.focus = FocusSidebar
 					m.tree.SetFocused(true)
@@ -540,10 +542,11 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.graph, cmd = m.graph.Update(msg)
 		return m, cmd
 	case ViewWorkflowRuns:
+		mouse := msg.Mouse()
 		if m.sidebarVisible {
 			// Determine which pane the mouse is in based on x position
 			sidebarW := clamp(m.width/4, 20, 35)
-			if msg.X < sidebarW {
+			if mouse.X < sidebarW {
 				if m.focus != FocusSidebar {
 					m.focus = FocusSidebar
 					m.tree.SetFocused(true)
@@ -717,7 +720,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, Keys.Top):
 			if m.pendingG {
 				m.pendingG = false
-				topMsg := tea.KeyMsg{Type: tea.KeyHome}
+				topMsg := tea.KeyPressMsg{Code: tea.KeyHome}
 				return m.updateFocused(topMsg)
 			}
 			m.pendingG = true
@@ -773,7 +776,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, Keys.Top):
 			if m.pendingG {
 				m.pendingG = false
-				topMsg := tea.KeyMsg{Type: tea.KeyHome}
+				topMsg := tea.KeyPressMsg{Code: tea.KeyHome}
 				return m.updateFocused(topMsg)
 			}
 			m.pendingG = true
@@ -1139,9 +1142,16 @@ func (m *Model) updateLayout() {
 	}
 }
 
-func (m Model) View() string {
+func (m Model) viewWithMode(content string) tea.View {
+	v := tea.NewView(content)
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
+}
+
+func (m Model) View() tea.View {
 	if m.width == 0 {
-		return "Loading..."
+		return m.viewWithMode("Loading...")
 	}
 
 	// Error bar
@@ -1152,17 +1162,17 @@ func (m Model) View() string {
 
 	// Confirm quit dialog
 	if m.confirmQuit {
-		return m.confirmQuitView()
+		return m.viewWithMode(m.confirmQuitView())
 	}
 
 	// Help overlay
 	if m.showHelp {
-		return m.helpView()
+		return m.viewWithMode(m.helpView())
 	}
 
 	// Repo picker overlay
 	if m.repoPicker.Visible() {
-		return m.repoPicker.View(m.width, m.height)
+		return m.viewWithMode(m.repoPicker.View(m.width, m.height))
 	}
 
 	var output string
@@ -1224,7 +1234,7 @@ func (m Model) View() string {
 	}
 
 	// Hard-truncate output to terminal dimensions to prevent scrolling
-	return truncateToFit(output, m.width, m.height)
+	return m.viewWithMode(truncateToFit(output, m.width, m.height))
 }
 
 func (m Model) helpBarView() string {

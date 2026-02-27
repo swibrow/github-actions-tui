@@ -1,9 +1,9 @@
 package ui
 
 import (
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	gh "github.com/swibrow/github-actions-tui/internal/github"
 )
 
@@ -34,25 +34,25 @@ func NewFilterModel() FilterModel {
 	branch := textinput.New()
 	branch.Placeholder = "branch"
 	branch.CharLimit = 50
-	branch.Width = 15
+	branch.SetWidth(15)
 	inputs[filterBranch] = branch
 
 	actor := textinput.New()
 	actor.Placeholder = "author"
 	actor.CharLimit = 50
-	actor.Width = 15
+	actor.SetWidth(15)
 	inputs[filterActor] = actor
 
 	status := textinput.New()
 	status.Placeholder = "status"
 	status.CharLimit = 20
-	status.Width = 15
+	status.SetWidth(15)
 	inputs[filterStatus] = status
 
 	event := textinput.New()
 	event.Placeholder = "event"
 	event.CharLimit = 20
-	event.Width = 15
+	event.SetWidth(15)
 	inputs[filterEvent] = event
 
 	return FilterModel{inputs: inputs}
@@ -88,7 +88,7 @@ func (m *FilterModel) SetSize(width int) {
 		inputW = 10
 	}
 	for i := range m.inputs {
-		m.inputs[i].Width = inputW
+		m.inputs[i].SetWidth(inputW)
 	}
 }
 
