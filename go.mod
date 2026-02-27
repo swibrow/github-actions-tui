@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
-	github.com/charmbracelet/lipgloss v1.1.1-0.20250319133953-166f707985bc
+	github.com/charmbracelet/lipgloss/v2 v2.0.0
 	github.com/cli/go-gh/v2 v2.13.0
 	github.com/google/go-github/v68 v68.0.0
 	golang.org/x/oauth2 v0.35.0
