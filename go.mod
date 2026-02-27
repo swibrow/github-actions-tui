@@ -8,6 +8,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.0
 	github.com/cli/go-gh/v2 v2.13.0
 	github.com/google/go-github/v68 v68.0.0
+	github.com/google/go-github/v84 v84.0.0
 	github.com/sahilm/fuzzy v0.1.1
 	golang.org/x/oauth2 v0.35.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -26,7 +27,7 @@ require (
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/google/go-querystring v1.1.0 // indirect
+	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
