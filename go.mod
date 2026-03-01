@@ -7,7 +7,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.0
 	github.com/cli/go-gh/v2 v2.13.0
-	github.com/google/go-github/v68 v68.0.0
+	github.com/google/go-github/v84 v84.0.0
 	github.com/google/go-github/v84 v84.0.0
 	github.com/sahilm/fuzzy v0.1.1
 	golang.org/x/oauth2 v0.35.0
