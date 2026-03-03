@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -219,6 +220,58 @@ func (m Model) searchRepos(query string) tea.Cmd {
 
 func (m Model) openActionsInBrowser() tea.Cmd {
 	url := fmt.Sprintf("https://github.com/%s/%s/actions", m.repoOwner, m.repoName)
+	return m.openURL(url)
+}
+
+// openSelectedInBrowser opens a context-sensitive URL based on the current view and selection.
+func (m Model) openSelectedInBrowser() tea.Cmd {
+	base := fmt.Sprintf("https://github.com/%s/%s", m.repoOwner, m.repoName)
+
+	// If sidebar is focused, use the tree selection
+	if m.focus == FocusSidebar {
+		node := m.tree.SelectedNode()
+		if node == nil {
+			return m.openActionsInBrowser()
+		}
+		switch node.Kind {
+		case NodeWorkflow:
+			if node.Workflow != nil && node.Workflow.Path != "" {
+				return m.openURL(base + "/actions/workflows/" + workflowFileName(node.Workflow.Path))
+			}
+			return m.openActionsInBrowser()
+		case NodeRun:
+			if node.Run != nil {
+				return m.openURL(fmt.Sprintf("%s/actions/runs/%d", base, node.Run.ID))
+			}
+		}
+		return m.openActionsInBrowser()
+	}
+
+	// Main pane — context depends on view
+	switch m.view {
+	case ViewWorkflowRuns:
+		run := m.runs.SelectedRun()
+		if run != nil {
+			return m.openURL(fmt.Sprintf("%s/actions/runs/%d", base, run.ID))
+		}
+	case ViewJobs:
+		job := m.graph.SelectedJob()
+		if job != nil && m.currentRun != nil {
+			return m.openURL(fmt.Sprintf("%s/actions/runs/%d/job/%d", base, m.currentRun.ID, job.ID))
+		}
+		if m.currentRun != nil {
+			return m.openURL(fmt.Sprintf("%s/actions/runs/%d", base, m.currentRun.ID))
+		}
+	case ViewLogs:
+		if m.currentJob != nil && m.currentRun != nil {
+			return m.openURL(fmt.Sprintf("%s/actions/runs/%d/job/%d", base, m.currentRun.ID, m.currentJob.ID))
+		}
+	}
+
+	return m.openActionsInBrowser()
+}
+
+func (m Model) openURL(url string) tea.Cmd {
 	return func() tea.Msg {
 		var cmd *exec.Cmd
 		switch runtime.GOOS {
@@ -232,6 +285,12 @@ func (m Model) openActionsInBrowser() tea.Cmd {
 		_ = cmd.Start()
 		return nil
 	}
+}
+
+// workflowFileName extracts the filename from a workflow path like ".github/workflows/ci.yml".
+func workflowFileName(path string) string {
+	parts := strings.Split(path, "/")
+	return parts[len(parts)-1]
 }
 
 // fetchJobStatus fetches the current job from the run's jobs list to get live step status.
@@ -668,6 +727,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, Keys.OpenBrowser):
 		return m, m.openActionsInBrowser()
+
+	case key.Matches(msg, Keys.OpenSelected):
+		return m, m.openSelectedInBrowser()
 	}
 
 	// Sidebar tree navigation: h/l expand/collapse/drill-in
@@ -1304,7 +1366,7 @@ func (m Model) helpBarView() string {
 	if m.view == ViewJobs && m.currentRun != nil && m.currentRun.RunAttempt > 1 {
 		extra = "  [/]:attempt"
 	}
-	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc/q:back  /:filter  r:refresh  b:sidebar  S:switch repo  O:browser  ?:help" + extra)
+	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc/q:back  /:filter  r:refresh  b:sidebar  S:switch repo  o:open  O:actions  ?:help" + extra)
 	return repo + keys
 }
 
@@ -1358,15 +1420,16 @@ Tree Sidebar:
   enter         Expand/collapse or drill in
 
 Mouse:
-  click         Focus pane
+  click         Focus pane / select item
   scroll        Scroll content
 
 Actions:
   /             Open filter bar / search logs
   r             Refresh data
   b             Toggle sidebar
+  o             Open selected in browser
+  O             Open actions page in browser
   S             Switch repository
-  O             Open actions in browser
   ?             Toggle help
   q             Quit
 

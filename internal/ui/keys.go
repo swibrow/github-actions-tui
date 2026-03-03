@@ -19,6 +19,7 @@ type KeyMap struct {
 	ToggleSidebar key.Binding
 	SwitchRepo    key.Binding
 	OpenBrowser   key.Binding
+	OpenSelected  key.Binding
 	PrevAttempt   key.Binding
 	NextAttempt   key.Binding
 }
@@ -86,7 +87,11 @@ var Keys = KeyMap{
 	),
 	OpenBrowser: key.NewBinding(
 		key.WithKeys("O"),
-		key.WithHelp("O", "open in browser"),
+		key.WithHelp("O", "open actions"),
+	),
+	OpenSelected: key.NewBinding(
+		key.WithKeys("o"),
+		key.WithHelp("o", "open selected"),
 	),
 	PrevAttempt: key.NewBinding(
 		key.WithKeys("["),
