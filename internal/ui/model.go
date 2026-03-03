@@ -279,6 +279,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case WorkflowsMsg:
 		if msg.Err != nil {
 			m.err = msg.Err
+			m.updateLayout()
 			return m, nil
 		}
 		m.workflows = msg.Workflows
@@ -288,6 +289,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case RunsMsg:
 		if msg.Err != nil {
 			m.err = msg.Err
+			m.updateLayout()
 			return m, nil
 		}
 		if msg.ResetCursor {
@@ -300,6 +302,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case JobsMsg:
 		if msg.Err != nil {
 			m.err = msg.Err
+			m.updateLayout()
 			return m, nil
 		}
 		m.updateGraphRunInfo()
@@ -339,6 +342,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.err = msg.Err
+			m.updateLayout()
 			return m, nil
 		}
 		jobName := ""
@@ -390,6 +394,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case RunsForTreeMsg:
 		if msg.Err != nil {
 			m.err = msg.Err
+			m.updateLayout()
 			return m, nil
 		}
 		m.tree.SetRunsForWorkflow(msg.WorkflowID, msg.Runs)
@@ -455,9 +460,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		wfID, _ := m.tree.SelectedWorkflow()
 		msg.Filter.WorkflowID = wfID
 		m.runs.SetLoading(true)
+		m.updateLayout()
 		return m, m.fetchRuns(msg.Filter, true)
 
 	case FilterCancelledMsg:
+		m.updateLayout()
 		return m, nil
 
 	case tea.MouseMsg:
@@ -585,8 +592,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global keys
 	switch {
 	case key.Matches(msg, Keys.Quit):
-		m.confirmQuit = true
-		return m, nil
+		if m.view == ViewWorkflowRuns {
+			m.confirmQuit = true
+			return m, nil
+		}
+		return m.goBack()
 
 	case key.Matches(msg, Keys.Help):
 		m.showHelp = !m.showHelp
@@ -703,6 +713,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, Keys.Filter):
 			m.filter.Show()
+			m.updateLayout()
 			return m, nil
 
 		case key.Matches(msg, Keys.Refresh):
@@ -798,9 +809,14 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			}
 			switch node.Kind {
 			case NodeWorkflow:
+				if node.Workflow == nil {
+					// "All Workflows" — show all runs
+					filter := m.filter.CurrentFilter(0)
+					return m, m.fetchRuns(filter, true)
+				}
 				// Toggle expand/collapse; fetch runs if expanding and no children
 				expanded, n := m.tree.ToggleExpand()
-				if expanded && n != nil && n.Workflow != nil && len(n.Children) == 0 {
+				if expanded && n != nil && len(n.Children) == 0 {
 					m.tree.SetLoading(n.Workflow.ID)
 					return m, m.fetchRunsForTree(n.Workflow.ID)
 				}
@@ -849,8 +865,19 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			}
 			switch node.Kind {
 			case NodeWorkflow:
+				if node.Workflow == nil {
+					// "All Workflows" — go back to runs view showing all
+					m.view = ViewWorkflowRuns
+					m.currentRun = nil
+					m.focus = FocusMain
+					m.tree.SetFocused(false)
+					m.runs.SetFocused(true)
+					m.updateLayout()
+					filter := m.filter.CurrentFilter(0)
+					return m, m.fetchRuns(filter, true)
+				}
 				expanded, n := m.tree.ToggleExpand()
-				if expanded && n != nil && n.Workflow != nil && len(n.Children) == 0 {
+				if expanded && n != nil && len(n.Children) == 0 {
 					m.tree.SetLoading(n.Workflow.ID)
 					return m, m.fetchRunsForTree(n.Workflow.ID)
 				}
@@ -1104,10 +1131,14 @@ func (m *Model) updateLayout() {
 		filterH = 3
 	}
 	helpH := 1
+	errH := 0
+	if m.err != nil {
+		errH = 1
+	}
 
 	switch m.view {
 	case ViewWorkflowRuns:
-		contentH := clamp(m.height-filterH-helpH, 4, m.height)
+		contentH := clamp(m.height-filterH-helpH-errH, 4, m.height)
 		if m.sidebarVisible {
 			sidebarW := clamp(m.width/4, 20, 35)
 			mainW := clamp(m.width-sidebarW, 10, m.width)
@@ -1119,7 +1150,7 @@ func (m *Model) updateLayout() {
 		m.filter.SetSize(m.width)
 
 	case ViewJobs:
-		contentH := clamp(m.height-helpH, 4, m.height)
+		contentH := clamp(m.height-helpH-errH, 4, m.height)
 		if m.sidebarVisible {
 			sidebarW := clamp(m.width/4, 20, 35)
 			mainW := clamp(m.width-sidebarW, 10, m.width)
@@ -1130,7 +1161,7 @@ func (m *Model) updateLayout() {
 		}
 
 	case ViewLogs:
-		contentH := clamp(m.height-helpH, 4, m.height)
+		contentH := clamp(m.height-helpH-errH, 4, m.height)
 		if m.sidebarVisible {
 			sidebarW := clamp(m.width/4, 20, 35)
 			mainW := clamp(m.width-sidebarW, 10, m.width)
@@ -1243,7 +1274,7 @@ func (m Model) helpBarView() string {
 	if m.view == ViewJobs && m.currentRun != nil && m.currentRun.RunAttempt > 1 {
 		extra = "  [/]:attempt"
 	}
-	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc:back  /:filter  r:refresh  b:sidebar  S:switch repo  O:browser  ?:help  q:quit" + extra)
+	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc/q:back  /:filter  r:refresh  b:sidebar  S:switch repo  O:browser  ?:help" + extra)
 	return repo + keys
 }
 

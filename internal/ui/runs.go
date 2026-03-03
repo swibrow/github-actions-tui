@@ -145,7 +145,7 @@ func (m *RunsModel) SetSize(width, height int) {
 	if tableW < 10 {
 		tableW = 10
 	}
-	tableH := height - 5 // border + title + header
+	tableH := height - 3 // border(2) + title(1); table includes its own header in SetHeight
 	if tableH < 1 {
 		tableH = 1
 	}
@@ -258,5 +258,5 @@ func (m RunsModel) View() string {
 	}
 	content = strings.Join(lines[:innerH], "\n")
 
-	return style.Width(m.width - 2).Height(m.height - 2).Render(content)
+	return style.Width(m.width).Height(m.height).Render(content)
 }

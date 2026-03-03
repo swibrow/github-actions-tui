@@ -545,7 +545,7 @@ func (m LogsModel) View() string {
 	}
 	content = strings.Join(lines, "\n")
 
-	return style.Width(m.width - 2).Height(m.height - 2).Render(content)
+	return style.Width(m.width).Height(m.height).Render(content)
 }
 
 func (m LogsModel) renderLogView(innerW int) string {
