@@ -500,80 +500,110 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	// Pass mouse events to the focused component for scroll support
+	mouse := msg.Mouse()
+
+	// Compute vertical offset of the content area (error bar pushes content down)
+	contentTopY := 0
+	if m.err != nil {
+		contentTopY = 1
+	}
+
+	// Determine sidebar width
+	sidebarW := 0
+	if m.sidebarVisible {
+		sidebarW = clamp(m.width/4, 20, 35)
+	}
+
+	// Determine which pane the mouse targets and switch focus
+	inSidebar := m.sidebarVisible && mouse.X < sidebarW
+
 	switch m.view {
-	case ViewLogs:
-		mouse := msg.Mouse()
-		if m.sidebarVisible {
-			sidebarW := clamp(m.width/4, 20, 35)
-			if mouse.X < sidebarW {
-				if m.focus != FocusSidebar {
-					m.focus = FocusSidebar
-					m.tree.SetFocused(true)
-					m.logs.SetFocused(false)
-				}
-				var cmd tea.Cmd
-				m.tree, cmd = m.tree.Update(msg)
-				return m, cmd
-			}
-		}
-		if m.focus != FocusMain {
-			m.focus = FocusMain
-			m.tree.SetFocused(false)
-			m.logs.SetFocused(true)
-		}
-		var cmd tea.Cmd
-		m.logs, cmd = m.logs.Update(msg)
-		return m, cmd
-	case ViewJobs:
-		mouse := msg.Mouse()
-		if m.sidebarVisible {
-			sidebarW := clamp(m.width/4, 20, 35)
-			if mouse.X < sidebarW {
-				if m.focus != FocusSidebar {
-					m.focus = FocusSidebar
-					m.tree.SetFocused(true)
-					m.graph.SetFocused(false)
-				}
-				var cmd tea.Cmd
-				m.tree, cmd = m.tree.Update(msg)
-				return m, cmd
-			}
-		}
-		if m.focus != FocusMain {
-			m.focus = FocusMain
-			m.tree.SetFocused(false)
-			m.graph.SetFocused(true)
-		}
-		var cmd tea.Cmd
-		m.graph, cmd = m.graph.Update(msg)
-		return m, cmd
 	case ViewWorkflowRuns:
-		mouse := msg.Mouse()
-		if m.sidebarVisible {
-			// Determine which pane the mouse is in based on x position
-			sidebarW := clamp(m.width/4, 20, 35)
-			if mouse.X < sidebarW {
-				if m.focus != FocusSidebar {
-					m.focus = FocusSidebar
-					m.tree.SetFocused(true)
-					m.runs.SetFocused(false)
-				}
-				var cmd tea.Cmd
-				m.tree, cmd = m.tree.Update(msg)
-				return m, cmd
+		if inSidebar {
+			if m.focus != FocusSidebar {
+				m.focus = FocusSidebar
+				m.tree.SetFocused(true)
+				m.runs.SetFocused(false)
 			}
+			adjusted := m.adjustMouseY(msg, contentTopY)
+			var cmd tea.Cmd
+			m.tree, cmd = m.tree.Update(adjusted)
+			return m, cmd
 		}
 		if m.focus != FocusMain {
 			m.focus = FocusMain
 			m.tree.SetFocused(false)
 			m.runs.SetFocused(true)
 		}
+		adjusted := m.adjustMouseY(msg, contentTopY)
 		var cmd tea.Cmd
-		m.runs, cmd = m.runs.Update(msg)
+		m.runs, cmd = m.runs.Update(adjusted)
+		return m, cmd
+
+	case ViewJobs:
+		if inSidebar {
+			if m.focus != FocusSidebar {
+				m.focus = FocusSidebar
+				m.tree.SetFocused(true)
+				m.graph.SetFocused(false)
+			}
+			adjusted := m.adjustMouseY(msg, contentTopY)
+			var cmd tea.Cmd
+			m.tree, cmd = m.tree.Update(adjusted)
+			return m, cmd
+		}
+		if m.focus != FocusMain {
+			m.focus = FocusMain
+			m.tree.SetFocused(false)
+			m.graph.SetFocused(true)
+		}
+		adjusted := m.adjustMouseY(msg, contentTopY)
+		var cmd tea.Cmd
+		m.graph, cmd = m.graph.Update(adjusted)
+		return m, cmd
+
+	case ViewLogs:
+		if inSidebar {
+			if m.focus != FocusSidebar {
+				m.focus = FocusSidebar
+				m.tree.SetFocused(true)
+				m.logs.SetFocused(false)
+			}
+			adjusted := m.adjustMouseY(msg, contentTopY)
+			var cmd tea.Cmd
+			m.tree, cmd = m.tree.Update(adjusted)
+			return m, cmd
+		}
+		if m.focus != FocusMain {
+			m.focus = FocusMain
+			m.tree.SetFocused(false)
+			m.logs.SetFocused(true)
+		}
+		adjusted := m.adjustMouseY(msg, contentTopY)
+		var cmd tea.Cmd
+		m.logs, cmd = m.logs.Update(adjusted)
 		return m, cmd
 	}
 	return m, nil
+}
+
+// adjustMouseY returns a new mouse message with Y adjusted by subtracting topOffset.
+func (m Model) adjustMouseY(msg tea.MouseMsg, topOffset int) tea.Msg {
+	switch msg := msg.(type) {
+	case tea.MouseClickMsg:
+		msg.Y -= topOffset
+		return msg
+	case tea.MouseReleaseMsg:
+		msg.Y -= topOffset
+		return msg
+	case tea.MouseWheelMsg:
+		msg.Y -= topOffset
+		return msg
+	case tea.MouseMotionMsg:
+		msg.Y -= topOffset
+		return msg
+	}
+	return msg
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

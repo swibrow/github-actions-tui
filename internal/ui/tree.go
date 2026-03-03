@@ -201,8 +201,46 @@ func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 			m.cursor = len(m.flat) - 1
 			m.scrollToVisible()
 		}
+	case tea.MouseWheelMsg:
+		m.handleScroll(msg.Button)
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			m.handleClick(msg.Y)
+		}
 	}
 	return m, nil
+}
+
+func (m *TreeModel) handleScroll(button tea.MouseButton) {
+	delta := 3
+	switch button {
+	case tea.MouseWheelUp:
+		m.offset -= delta
+		if m.offset < 0 {
+			m.offset = 0
+		}
+	case tea.MouseWheelDown:
+		maxOffset := len(m.flat) - (m.height - 4)
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		m.offset += delta
+		if m.offset > maxOffset {
+			m.offset = maxOffset
+		}
+	}
+}
+
+func (m *TreeModel) handleClick(absY int) {
+	// border(1) + title(1) = 2 lines of header within the component
+	relY := absY - 2
+	if relY < 0 {
+		return
+	}
+	idx := m.offset + relY
+	if idx >= 0 && idx < len(m.flat) {
+		m.cursor = idx
+	}
 }
 
 // ToggleExpand toggles the expand/collapse state of the current node.

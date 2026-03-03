@@ -226,8 +226,50 @@ func (m LogsModel) updateStepView(msg tea.Msg) (LogsModel, tea.Cmd) {
 			m.stepCursor = len(m.steps) - 1
 			m.scrollStepsToVisible()
 		}
+	case tea.MouseWheelMsg:
+		m.handleStepScroll(msg.Button)
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			m.handleStepClick(msg.Y)
+		}
 	}
 	return m, nil
+}
+
+func (m *LogsModel) handleStepScroll(button tea.MouseButton) {
+	delta := 3
+	innerH := m.height - 6
+	if innerH < 1 {
+		innerH = 1
+	}
+	switch button {
+	case tea.MouseWheelUp:
+		m.stepOffset -= delta
+		if m.stepOffset < 0 {
+			m.stepOffset = 0
+		}
+	case tea.MouseWheelDown:
+		maxOffset := len(m.steps) - innerH
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		m.stepOffset += delta
+		if m.stepOffset > maxOffset {
+			m.stepOffset = maxOffset
+		}
+	}
+}
+
+func (m *LogsModel) handleStepClick(absY int) {
+	// border(1) + title(1) + separator(1) + info(1) + blank(1) = 5 lines of header
+	relY := absY - 5
+	if relY < 0 {
+		return
+	}
+	idx := m.stepOffset + relY
+	if idx >= 0 && idx < len(m.steps) {
+		m.stepCursor = idx
+	}
 }
 
 func (m LogsModel) renderStepView(innerW int) string {
