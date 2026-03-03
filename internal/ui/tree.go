@@ -165,7 +165,7 @@ func (m *TreeModel) SetSize(width, height int) {
 }
 
 func (m *TreeModel) scrollToVisible() {
-	innerH := m.height - 4 // border + title
+	innerH := m.height - 3 // border(2) + title(1)
 	if innerH < 1 {
 		innerH = 1
 	}
@@ -220,7 +220,7 @@ func (m *TreeModel) handleScroll(button tea.MouseButton) {
 			m.offset = 0
 		}
 	case tea.MouseWheelDown:
-		maxOffset := len(m.flat) - (m.height - 4)
+		maxOffset := len(m.flat) - (m.height - 3)
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
@@ -307,7 +307,7 @@ func (m TreeModel) View() string {
 
 	title := styleTitle.Render("Workflows") + "\n"
 
-	innerH := m.height - 4 // border + title
+	innerH := m.height - 3 // border(2) + title(1)
 	if innerH < 1 {
 		innerH = 1
 	}

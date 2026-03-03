@@ -203,7 +203,10 @@ func (m *GraphModel) SetSize(width, height int) {
 }
 
 func (m *GraphModel) scrollToVisible() {
-	innerH := m.height - 4
+	innerH := m.height - 3 // border(2) + title(1)
+	if m.totalAttempts > 1 {
+		innerH-- // attempt hint line
+	}
 	if innerH < 1 {
 		innerH = 1
 	}
@@ -254,7 +257,10 @@ func (m GraphModel) Update(msg tea.Msg) (GraphModel, tea.Cmd) {
 
 func (m *GraphModel) handleScroll(button tea.MouseButton) {
 	delta := 3
-	innerH := m.height - 4
+	innerH := m.height - 3 // border(2) + title(1)
+	if m.totalAttempts > 1 {
+		innerH--
+	}
 	if innerH < 1 {
 		innerH = 1
 	}
@@ -302,7 +308,7 @@ func (m *GraphModel) handleClick(absY int) {
 	}
 
 	// Account for scroll offset used in View()
-	innerH := m.height - 4
+	innerH := m.height - 3 // border(2) + title(1)
 	if m.totalAttempts > 1 {
 		innerH--
 	}
@@ -408,7 +414,7 @@ func (m GraphModel) View() string {
 	}
 
 	// Scroll to keep cursor visible
-	innerH := m.height - 4 // border + title
+	innerH := m.height - 3 // border(2) + title(1)
 	if m.totalAttempts > 1 {
 		innerH-- // attempt hint line
 	}

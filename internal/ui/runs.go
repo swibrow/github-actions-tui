@@ -209,6 +209,22 @@ func (m *RunsModel) resizeColumns() {
 				break // all flexible columns at their minimum
 			}
 		}
+	} else if totalRendered < tableW {
+		// Grow flexible columns to fill remaining space
+		slack := tableW - totalRendered
+		for slack > 0 {
+			grown := false
+			for i, col := range runsColumns {
+				if col.min > 0 && slack > 0 {
+					colWidths[i]++
+					slack--
+					grown = true
+				}
+			}
+			if !grown {
+				break
+			}
+		}
 	}
 
 	cols := make([]table.Column, len(runsColumns))
