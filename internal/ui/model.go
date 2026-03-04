@@ -293,6 +293,38 @@ func workflowFileName(path string) string {
 	return parts[len(parts)-1]
 }
 
+// openPROrBranch opens the PR page if the run is from a pull_request event,
+// otherwise opens the branch on the repo's code page.
+func (m Model) openPROrBranch() tea.Cmd {
+	base := fmt.Sprintf("https://github.com/%s/%s", m.repoOwner, m.repoName)
+
+	// Find the relevant run based on current context
+	var run *gh.WorkflowRun
+	if m.focus == FocusSidebar {
+		node := m.tree.SelectedNode()
+		if node != nil && node.Run != nil {
+			run = node.Run
+		}
+	}
+	if run == nil {
+		switch m.view {
+		case ViewWorkflowRuns:
+			run = m.runs.SelectedRun()
+		case ViewJobs, ViewLogs:
+			run = m.currentRun
+		}
+	}
+
+	if run == nil {
+		return nil
+	}
+
+	if run.PRNumber > 0 {
+		return m.openURL(fmt.Sprintf("%s/pull/%d", base, run.PRNumber))
+	}
+	return m.openURL(fmt.Sprintf("%s/tree/%s", base, run.Branch))
+}
+
 // fetchJobStatus fetches the current job from the run's jobs list to get live step status.
 func (m Model) fetchJobStatus(runID, jobID int64) tea.Cmd {
 	return func() tea.Msg {
@@ -730,6 +762,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, Keys.OpenSelected):
 		return m, m.openSelectedInBrowser()
+
+	case key.Matches(msg, Keys.OpenPRBranch):
+		return m, m.openPROrBranch()
 	}
 
 	// Sidebar tree navigation: h/l expand/collapse/drill-in
@@ -1366,7 +1401,7 @@ func (m Model) helpBarView() string {
 	if m.view == ViewJobs && m.currentRun != nil && m.currentRun.RunAttempt > 1 {
 		extra = "  [/]:attempt"
 	}
-	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc/q:back  /:filter  r:refresh  b:sidebar  S:switch repo  o:open  O:actions  ?:help" + extra)
+	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc/q:back  /:filter  r:refresh  b:sidebar  o:open  p:PR/branch  O:actions  ?:help" + extra)
 	return repo + keys
 }
 
@@ -1428,6 +1463,7 @@ Actions:
   r             Refresh data
   b             Toggle sidebar
   o             Open selected in browser
+  p             Open PR or branch in browser
   O             Open actions page in browser
   S             Switch repository
   ?             Toggle help

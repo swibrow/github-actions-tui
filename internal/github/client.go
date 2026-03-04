@@ -32,6 +32,8 @@ type WorkflowRun struct {
 	HeadSHA      string
 	Event        string
 	Actor        string
+	HTMLURL      string
+	PRNumber     int // first associated PR number, 0 if none
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	RunStartedAt time.Time
@@ -169,32 +171,7 @@ func (c *Client) FetchRuns(ctx context.Context, filter RunFilter) ([]WorkflowRun
 		return nil, fmt.Errorf("fetching runs: %w", err)
 	}
 
-	runs := make([]WorkflowRun, 0, len(result.WorkflowRuns))
-	for _, r := range result.WorkflowRuns {
-		run := WorkflowRun{
-			ID:         r.GetID(),
-			WorkflowID: r.GetWorkflowID(),
-			Number:     r.GetRunNumber(),
-			RunAttempt: r.GetRunAttempt(),
-			Name:       r.GetName(),
-			Status:     r.GetStatus(),
-			Conclusion: r.GetConclusion(),
-			Branch:     r.GetHeadBranch(),
-			HeadSHA:    r.GetHeadSHA(),
-			Event:      r.GetEvent(),
-			Actor:      r.GetActor().GetLogin(),
-			CreatedAt:  r.GetCreatedAt().Time,
-			UpdatedAt:  r.GetUpdatedAt().Time,
-		}
-		if r.RunStartedAt != nil {
-			run.RunStartedAt = r.GetRunStartedAt().Time
-		}
-		if run.Status == "completed" && !run.RunStartedAt.IsZero() {
-			run.Duration = run.UpdatedAt.Sub(run.RunStartedAt)
-		}
-		runs = append(runs, run)
-	}
-	return runs, nil
+	return convertWorkflowRuns(result.WorkflowRuns), nil
 }
 
 func (c *Client) FetchJobs(ctx context.Context, runID int64) ([]WorkflowJob, error) {
@@ -299,8 +276,12 @@ func (c *Client) FetchRunsForWorkflow(ctx context.Context, workflowID int64, cou
 		return nil, fmt.Errorf("fetching runs for workflow: %w", err)
 	}
 
-	runs := make([]WorkflowRun, 0, len(result.WorkflowRuns))
-	for _, r := range result.WorkflowRuns {
+	return convertWorkflowRuns(result.WorkflowRuns), nil
+}
+
+func convertWorkflowRuns(ghRuns []*github.WorkflowRun) []WorkflowRun {
+	runs := make([]WorkflowRun, 0, len(ghRuns))
+	for _, r := range ghRuns {
 		run := WorkflowRun{
 			ID:         r.GetID(),
 			WorkflowID: r.GetWorkflowID(),
@@ -313,8 +294,12 @@ func (c *Client) FetchRunsForWorkflow(ctx context.Context, workflowID int64, cou
 			HeadSHA:    r.GetHeadSHA(),
 			Event:      r.GetEvent(),
 			Actor:      r.GetActor().GetLogin(),
+			HTMLURL:    r.GetHTMLURL(),
 			CreatedAt:  r.GetCreatedAt().Time,
 			UpdatedAt:  r.GetUpdatedAt().Time,
+		}
+		if len(r.PullRequests) > 0 {
+			run.PRNumber = r.PullRequests[0].GetNumber()
 		}
 		if r.RunStartedAt != nil {
 			run.RunStartedAt = r.GetRunStartedAt().Time
@@ -324,7 +309,7 @@ func (c *Client) FetchRunsForWorkflow(ctx context.Context, workflowID int64, cou
 		}
 		runs = append(runs, run)
 	}
-	return runs, nil
+	return runs
 }
 
 func (c *Client) FetchFileContent(ctx context.Context, path string) ([]byte, error) {

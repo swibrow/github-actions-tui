@@ -20,6 +20,7 @@ type KeyMap struct {
 	SwitchRepo    key.Binding
 	OpenBrowser   key.Binding
 	OpenSelected  key.Binding
+	OpenPRBranch  key.Binding
 	PrevAttempt   key.Binding
 	NextAttempt   key.Binding
 }
@@ -92,6 +93,10 @@ var Keys = KeyMap{
 	OpenSelected: key.NewBinding(
 		key.WithKeys("o"),
 		key.WithHelp("o", "open selected"),
+	),
+	OpenPRBranch: key.NewBinding(
+		key.WithKeys("p"),
+		key.WithHelp("p", "open PR/branch"),
 	),
 	PrevAttempt: key.NewBinding(
 		key.WithKeys("["),
