@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	charm.land/bubbles/v2 v2.0.0
-	charm.land/bubbletea/v2 v2.0.0
+	charm.land/bubbletea/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.0
 	github.com/cli/go-gh/v2 v2.13.0
 	github.com/google/go-github/v68 v68.0.0
