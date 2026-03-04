@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.2](https://github.com/swibrow/github-actions-tui/compare/v0.2.1...v0.2.2) (2026-03-04)
+
+
+### Bug Fixes
+
+* **deps:** update import paths and go.mod for go-github v84 ([ca2261f](https://github.com/swibrow/github-actions-tui/commit/ca2261fc49d6da8e0d10f800e799dae2fc4e7810))
+* **deps:** update module charm.land/bubbletea/v2 to v2.0.1 ([37281cc](https://github.com/swibrow/github-actions-tui/commit/37281cc54d7548a5dfafb1346858c8b218ee1576))
+* **deps:** update module github.com/google/go-github/v68 to v84 ([3d19811](https://github.com/swibrow/github-actions-tui/commit/3d19811f9675d178f775be9af998f5a126340d63))
+* **deps:** update module github.com/google/go-github/v68 to v84 ([1e50259](https://github.com/swibrow/github-actions-tui/commit/1e5025978c07c5754c379b18912e16bee6383369))
+
 ## [0.2.1](https://github.com/swibrow/github-actions-tui/compare/v0.2.0...v0.2.1) (2026-03-04)
 
 
