@@ -38,6 +38,14 @@ gh auth login
 
 ## Install
 
+### Homebrew
+
+```sh
+brew install swibrow/tap/gha
+```
+
+### Go
+
 ```sh
 go install github.com/swibrow/github-actions-tui@latest
 ```
@@ -47,7 +55,7 @@ go install github.com/swibrow/github-actions-tui@latest
 Run from inside a Git repository with a GitHub remote:
 
 ```sh
-github-actions-tui
+gha
 ```
 
 ## Keybindings
