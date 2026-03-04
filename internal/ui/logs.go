@@ -62,13 +62,14 @@ func NewLogsModel() LogsModel {
 }
 
 func (m *LogsModel) SetContent(content, jobName string) {
+	pendingScroll := m.scrollToStep
 	isRefresh := m.jobName == jobName && !m.loading
 	m.jobName = jobName
 	m.loading = false
 	m.showingSteps = false
 	m.jobStatus = "completed"
 
-	if isRefresh {
+	if isRefresh && pendingScroll < 0 {
 		// Preserve scroll position and search on poll refresh
 		yOff := m.viewport.YOffset()
 		m.rawContent = content
@@ -82,8 +83,8 @@ func (m *LogsModel) SetContent(content, jobName string) {
 		m.searchInput.SetValue("")
 		m.applyContent()
 
-		if m.scrollToStep >= 0 {
-			targetLine := m.lineForStep(m.scrollToStep)
+		if pendingScroll >= 0 {
+			targetLine := m.lineForStep(pendingScroll)
 			m.viewport.SetYOffset(targetLine)
 			m.scrollToStep = -1
 		} else {
