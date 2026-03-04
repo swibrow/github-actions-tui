@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/swibrow/github-actions-tui/compare/v0.2.0...v0.2.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* Checkout tagged commit in goreleaser step ([b6f6818](https://github.com/swibrow/github-actions-tui/commit/b6f6818214e6416349eb230bd17e7fc5c3fe30da))
+
 ## [0.2.0](https://github.com/swibrow/github-actions-tui/compare/v0.1.2...v0.2.0) (2026-03-04)
 
 
