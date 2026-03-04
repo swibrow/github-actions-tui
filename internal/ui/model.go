@@ -608,6 +608,17 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Determine which pane the mouse targets and switch focus
 	inSidebar := m.sidebarVisible && mouse.X < sidebarW
 
+	// Right click → go back (like esc)
+	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseRight {
+		return m.goBack()
+	}
+
+	// Check if this is a left click (for drill-in after cursor move)
+	isLeftClick := false
+	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
+		isLeftClick = true
+	}
+
 	switch m.view {
 	case ViewWorkflowRuns:
 		if inSidebar {
@@ -619,6 +630,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			adjusted := m.adjustMouseY(msg, contentTopY)
 			var cmd tea.Cmd
 			m.tree, cmd = m.tree.Update(adjusted)
+			if isLeftClick {
+				return m.handleEnter()
+			}
 			return m, cmd
 		}
 		if m.focus != FocusMain {
@@ -629,6 +643,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		adjusted := m.adjustMouseY(msg, contentTopY)
 		var cmd tea.Cmd
 		m.runs, cmd = m.runs.Update(adjusted)
+		if isLeftClick {
+			return m.handleEnter()
+		}
 		return m, cmd
 
 	case ViewJobs:
@@ -641,6 +658,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			adjusted := m.adjustMouseY(msg, contentTopY)
 			var cmd tea.Cmd
 			m.tree, cmd = m.tree.Update(adjusted)
+			if isLeftClick {
+				return m.handleEnter()
+			}
 			return m, cmd
 		}
 		if m.focus != FocusMain {
@@ -651,6 +671,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		adjusted := m.adjustMouseY(msg, contentTopY)
 		var cmd tea.Cmd
 		m.graph, cmd = m.graph.Update(adjusted)
+		if isLeftClick {
+			return m.handleEnter()
+		}
 		return m, cmd
 
 	case ViewLogs:
@@ -663,6 +686,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			adjusted := m.adjustMouseY(msg, contentTopY)
 			var cmd tea.Cmd
 			m.tree, cmd = m.tree.Update(adjusted)
+			if isLeftClick {
+				return m.handleEnter()
+			}
 			return m, cmd
 		}
 		if m.focus != FocusMain {
@@ -673,6 +699,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		adjusted := m.adjustMouseY(msg, contentTopY)
 		var cmd tea.Cmd
 		m.logs, cmd = m.logs.Update(adjusted)
+		if isLeftClick {
+			return m.handleEnter()
+		}
 		return m, cmd
 	}
 	return m, nil
@@ -1303,7 +1332,12 @@ func (m *Model) updateLayout() {
 func (m Model) viewWithMode(content string) tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
+	// Disable mouse capture in log content view so users can select text
+	if m.view == ViewLogs && !m.logs.InStepView() && !m.logs.Searching() {
+		v.MouseMode = tea.MouseModeNone
+	} else {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 	return v
 }
 
