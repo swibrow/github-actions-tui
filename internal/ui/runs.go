@@ -118,24 +118,23 @@ func (m *RunsModel) SetTitle(title string) {
 	m.title = title
 }
 
-// colSpec defines a column with its title, max width, and optional min width.
-// Columns with min > 0 are flexible and will shrink when the table is too narrow.
+// colSpec defines a column with its title and resize behavior.
 type colSpec struct {
 	title string
-	max   int
-	min   int // 0 = fixed (won't shrink)
+	min   int  // > 0: can shrink to this width when table is too narrow
+	grow  bool // true: receives extra space to fill table width
 }
 
 var runsColumns = []colSpec{
-	{title: " ", max: 2},
-	{title: "#", max: 4},
-	{title: "Action", max: 20, min: 8},
-	{title: "Branch", max: 30, min: 16},
-	{title: "SHA", max: 7},
-	{title: "Event", max: 10},
-	{title: "Actor", max: 20, min: 8},
-	{title: "Age", max: 6},
-	{title: "Duration", max: 8, min: 3},
+	{title: " "},
+	{title: "#"},
+	{title: "Action", min: 6},
+	{title: "Branch", min: 8, grow: true},
+	{title: "SHA"},
+	{title: "Event"},
+	{title: "Actor", min: 6, grow: true},
+	{title: "Age"},
+	{title: "Duration", min: 3},
 }
 
 func (m *RunsModel) SetSize(width, height int) {
@@ -145,7 +144,7 @@ func (m *RunsModel) SetSize(width, height int) {
 	if tableW < 10 {
 		tableW = 10
 	}
-	tableH := height - 5 // border + title + header
+	tableH := height - 3 // border(2) + title(1); table includes its own header in SetHeight
 	if tableH < 1 {
 		tableH = 1
 	}
@@ -164,7 +163,7 @@ func (m *RunsModel) resizeColumns() {
 		tableW = 10
 	}
 
-	// Measure max content width per column from actual data
+	// Size each column to fit its widest content (or header)
 	rows := m.table.Rows()
 	colWidths := make([]int, len(runsColumns))
 	for i, col := range runsColumns {
@@ -177,24 +176,16 @@ func (m *RunsModel) resizeColumns() {
 			}
 		}
 	}
-	// Cap each column at its max
-	for i, col := range runsColumns {
-		if colWidths[i] > col.max {
-			colWidths[i] = col.max
-		}
-	}
 
-	// If total exceeds available width, shrink flexible columns
-	total := 0
+	// Check if total fits; if not, shrink flexible columns
+	cellPadding := len(colWidths) * 2
+	total := cellPadding
 	for _, w := range colWidths {
 		total += w
 	}
-	// Each cell has Padding(0,1) = 2 chars overhead per column
-	cellPadding := len(colWidths) * 2
-	totalRendered := total + cellPadding
 
-	if totalRendered > tableW {
-		excess := totalRendered - tableW
+	if total > tableW {
+		excess := total - tableW
 		// Shrink flexible columns (those with min > 0), largest first
 		for excess > 0 {
 			shrunk := false
@@ -206,7 +197,23 @@ func (m *RunsModel) resizeColumns() {
 				}
 			}
 			if !shrunk {
-				break // all flexible columns at their minimum
+				break
+			}
+		}
+	} else if total < tableW {
+		// Distribute remaining space to growable columns (Branch, Actor)
+		slack := tableW - total
+		for slack > 0 {
+			grown := false
+			for i, col := range runsColumns {
+				if col.grow && slack > 0 {
+					colWidths[i]++
+					slack--
+					grown = true
+				}
+			}
+			if !grown {
+				break
 			}
 		}
 	}
@@ -226,9 +233,37 @@ func (m RunsModel) Update(msg tea.Msg) (RunsModel, tea.Cmd) {
 	if !m.focused {
 		return m, nil
 	}
+	switch msg := msg.(type) {
+	case tea.MouseWheelMsg:
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			m.table.MoveUp(3)
+		case tea.MouseWheelDown:
+			m.table.MoveDown(3)
+		}
+		return m, nil
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			m.handleClick(msg.Y)
+			return m, nil
+		}
+	}
 	var cmd tea.Cmd
 	m.table, cmd = m.table.Update(msg)
 	return m, cmd
+}
+
+func (m *RunsModel) handleClick(absY int) {
+	// border(1) + title(1) + table header(1) + header border(1) = 4 lines of header
+	relY := absY - 4
+	if relY < 0 {
+		return
+	}
+	idx := relY
+	rows := m.table.Rows()
+	if idx >= 0 && idx < len(rows) {
+		m.table.SetCursor(idx)
+	}
 }
 
 func (m RunsModel) View() string {
@@ -258,5 +293,5 @@ func (m RunsModel) View() string {
 	}
 	content = strings.Join(lines[:innerH], "\n")
 
-	return style.Width(m.width - 2).Height(m.height - 2).Render(content)
+	return style.Width(m.width).Height(m.height).Render(content)
 }

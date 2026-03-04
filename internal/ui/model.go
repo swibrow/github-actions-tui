@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -219,6 +220,58 @@ func (m Model) searchRepos(query string) tea.Cmd {
 
 func (m Model) openActionsInBrowser() tea.Cmd {
 	url := fmt.Sprintf("https://github.com/%s/%s/actions", m.repoOwner, m.repoName)
+	return m.openURL(url)
+}
+
+// openSelectedInBrowser opens a context-sensitive URL based on the current view and selection.
+func (m Model) openSelectedInBrowser() tea.Cmd {
+	base := fmt.Sprintf("https://github.com/%s/%s", m.repoOwner, m.repoName)
+
+	// If sidebar is focused, use the tree selection
+	if m.focus == FocusSidebar {
+		node := m.tree.SelectedNode()
+		if node == nil {
+			return m.openActionsInBrowser()
+		}
+		switch node.Kind {
+		case NodeWorkflow:
+			if node.Workflow != nil && node.Workflow.Path != "" {
+				return m.openURL(base + "/actions/workflows/" + workflowFileName(node.Workflow.Path))
+			}
+			return m.openActionsInBrowser()
+		case NodeRun:
+			if node.Run != nil {
+				return m.openURL(fmt.Sprintf("%s/actions/runs/%d", base, node.Run.ID))
+			}
+		}
+		return m.openActionsInBrowser()
+	}
+
+	// Main pane — context depends on view
+	switch m.view {
+	case ViewWorkflowRuns:
+		run := m.runs.SelectedRun()
+		if run != nil {
+			return m.openURL(fmt.Sprintf("%s/actions/runs/%d", base, run.ID))
+		}
+	case ViewJobs:
+		job := m.graph.SelectedJob()
+		if job != nil && m.currentRun != nil {
+			return m.openURL(fmt.Sprintf("%s/actions/runs/%d/job/%d", base, m.currentRun.ID, job.ID))
+		}
+		if m.currentRun != nil {
+			return m.openURL(fmt.Sprintf("%s/actions/runs/%d", base, m.currentRun.ID))
+		}
+	case ViewLogs:
+		if m.currentJob != nil && m.currentRun != nil {
+			return m.openURL(fmt.Sprintf("%s/actions/runs/%d/job/%d", base, m.currentRun.ID, m.currentJob.ID))
+		}
+	}
+
+	return m.openActionsInBrowser()
+}
+
+func (m Model) openURL(url string) tea.Cmd {
 	return func() tea.Msg {
 		var cmd *exec.Cmd
 		switch runtime.GOOS {
@@ -232,6 +285,44 @@ func (m Model) openActionsInBrowser() tea.Cmd {
 		_ = cmd.Start()
 		return nil
 	}
+}
+
+// workflowFileName extracts the filename from a workflow path like ".github/workflows/ci.yml".
+func workflowFileName(path string) string {
+	parts := strings.Split(path, "/")
+	return parts[len(parts)-1]
+}
+
+// openPROrBranch opens the PR page if the run is from a pull_request event,
+// otherwise opens the branch on the repo's code page.
+func (m Model) openPROrBranch() tea.Cmd {
+	base := fmt.Sprintf("https://github.com/%s/%s", m.repoOwner, m.repoName)
+
+	// Find the relevant run based on current context
+	var run *gh.WorkflowRun
+	if m.focus == FocusSidebar {
+		node := m.tree.SelectedNode()
+		if node != nil && node.Run != nil {
+			run = node.Run
+		}
+	}
+	if run == nil {
+		switch m.view {
+		case ViewWorkflowRuns:
+			run = m.runs.SelectedRun()
+		case ViewJobs, ViewLogs:
+			run = m.currentRun
+		}
+	}
+
+	if run == nil {
+		return nil
+	}
+
+	if run.PRNumber > 0 {
+		return m.openURL(fmt.Sprintf("%s/pull/%d", base, run.PRNumber))
+	}
+	return m.openURL(fmt.Sprintf("%s/tree/%s", base, run.Branch))
 }
 
 // fetchJobStatus fetches the current job from the run's jobs list to get live step status.
@@ -279,6 +370,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case WorkflowsMsg:
 		if msg.Err != nil {
 			m.err = msg.Err
+			m.updateLayout()
 			return m, nil
 		}
 		m.workflows = msg.Workflows
@@ -288,6 +380,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case RunsMsg:
 		if msg.Err != nil {
 			m.err = msg.Err
+			m.updateLayout()
 			return m, nil
 		}
 		if msg.ResetCursor {
@@ -300,6 +393,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case JobsMsg:
 		if msg.Err != nil {
 			m.err = msg.Err
+			m.updateLayout()
 			return m, nil
 		}
 		m.updateGraphRunInfo()
@@ -339,6 +433,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.err = msg.Err
+			m.updateLayout()
 			return m, nil
 		}
 		jobName := ""
@@ -390,6 +485,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case RunsForTreeMsg:
 		if msg.Err != nil {
 			m.err = msg.Err
+			m.updateLayout()
 			return m, nil
 		}
 		m.tree.SetRunsForWorkflow(msg.WorkflowID, msg.Runs)
@@ -455,9 +551,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		wfID, _ := m.tree.SelectedWorkflow()
 		msg.Filter.WorkflowID = wfID
 		m.runs.SetLoading(true)
+		m.updateLayout()
 		return m, m.fetchRuns(msg.Filter, true)
 
 	case FilterCancelledMsg:
+		m.updateLayout()
 		return m, nil
 
 	case tea.MouseMsg:
@@ -493,80 +591,139 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	// Pass mouse events to the focused component for scroll support
+	mouse := msg.Mouse()
+
+	// Compute vertical offset of the content area (error bar pushes content down)
+	contentTopY := 0
+	if m.err != nil {
+		contentTopY = 1
+	}
+
+	// Determine sidebar width
+	sidebarW := 0
+	if m.sidebarVisible {
+		sidebarW = clamp(m.width/4, 20, 35)
+	}
+
+	// Determine which pane the mouse targets and switch focus
+	inSidebar := m.sidebarVisible && mouse.X < sidebarW
+
+	// Right click → go back (like esc)
+	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseRight {
+		return m.goBack()
+	}
+
+	// Check if this is a left click (for drill-in after cursor move)
+	isLeftClick := false
+	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
+		isLeftClick = true
+	}
+
 	switch m.view {
-	case ViewLogs:
-		mouse := msg.Mouse()
-		if m.sidebarVisible {
-			sidebarW := clamp(m.width/4, 20, 35)
-			if mouse.X < sidebarW {
-				if m.focus != FocusSidebar {
-					m.focus = FocusSidebar
-					m.tree.SetFocused(true)
-					m.logs.SetFocused(false)
-				}
-				var cmd tea.Cmd
-				m.tree, cmd = m.tree.Update(msg)
-				return m, cmd
-			}
-		}
-		if m.focus != FocusMain {
-			m.focus = FocusMain
-			m.tree.SetFocused(false)
-			m.logs.SetFocused(true)
-		}
-		var cmd tea.Cmd
-		m.logs, cmd = m.logs.Update(msg)
-		return m, cmd
-	case ViewJobs:
-		mouse := msg.Mouse()
-		if m.sidebarVisible {
-			sidebarW := clamp(m.width/4, 20, 35)
-			if mouse.X < sidebarW {
-				if m.focus != FocusSidebar {
-					m.focus = FocusSidebar
-					m.tree.SetFocused(true)
-					m.graph.SetFocused(false)
-				}
-				var cmd tea.Cmd
-				m.tree, cmd = m.tree.Update(msg)
-				return m, cmd
-			}
-		}
-		if m.focus != FocusMain {
-			m.focus = FocusMain
-			m.tree.SetFocused(false)
-			m.graph.SetFocused(true)
-		}
-		var cmd tea.Cmd
-		m.graph, cmd = m.graph.Update(msg)
-		return m, cmd
 	case ViewWorkflowRuns:
-		mouse := msg.Mouse()
-		if m.sidebarVisible {
-			// Determine which pane the mouse is in based on x position
-			sidebarW := clamp(m.width/4, 20, 35)
-			if mouse.X < sidebarW {
-				if m.focus != FocusSidebar {
-					m.focus = FocusSidebar
-					m.tree.SetFocused(true)
-					m.runs.SetFocused(false)
-				}
-				var cmd tea.Cmd
-				m.tree, cmd = m.tree.Update(msg)
-				return m, cmd
+		if inSidebar {
+			if m.focus != FocusSidebar {
+				m.focus = FocusSidebar
+				m.tree.SetFocused(true)
+				m.runs.SetFocused(false)
 			}
+			adjusted := m.adjustMouseY(msg, contentTopY)
+			var cmd tea.Cmd
+			m.tree, cmd = m.tree.Update(adjusted)
+			if isLeftClick {
+				return m.handleEnter()
+			}
+			return m, cmd
 		}
 		if m.focus != FocusMain {
 			m.focus = FocusMain
 			m.tree.SetFocused(false)
 			m.runs.SetFocused(true)
 		}
+		adjusted := m.adjustMouseY(msg, contentTopY)
 		var cmd tea.Cmd
-		m.runs, cmd = m.runs.Update(msg)
+		m.runs, cmd = m.runs.Update(adjusted)
+		if isLeftClick {
+			return m.handleEnter()
+		}
+		return m, cmd
+
+	case ViewJobs:
+		if inSidebar {
+			if m.focus != FocusSidebar {
+				m.focus = FocusSidebar
+				m.tree.SetFocused(true)
+				m.graph.SetFocused(false)
+			}
+			adjusted := m.adjustMouseY(msg, contentTopY)
+			var cmd tea.Cmd
+			m.tree, cmd = m.tree.Update(adjusted)
+			if isLeftClick {
+				return m.handleEnter()
+			}
+			return m, cmd
+		}
+		if m.focus != FocusMain {
+			m.focus = FocusMain
+			m.tree.SetFocused(false)
+			m.graph.SetFocused(true)
+		}
+		adjusted := m.adjustMouseY(msg, contentTopY)
+		var cmd tea.Cmd
+		m.graph, cmd = m.graph.Update(adjusted)
+		if isLeftClick {
+			return m.handleEnter()
+		}
+		return m, cmd
+
+	case ViewLogs:
+		if inSidebar {
+			if m.focus != FocusSidebar {
+				m.focus = FocusSidebar
+				m.tree.SetFocused(true)
+				m.logs.SetFocused(false)
+			}
+			adjusted := m.adjustMouseY(msg, contentTopY)
+			var cmd tea.Cmd
+			m.tree, cmd = m.tree.Update(adjusted)
+			if isLeftClick {
+				return m.handleEnter()
+			}
+			return m, cmd
+		}
+		if m.focus != FocusMain {
+			m.focus = FocusMain
+			m.tree.SetFocused(false)
+			m.logs.SetFocused(true)
+		}
+		adjusted := m.adjustMouseY(msg, contentTopY)
+		var cmd tea.Cmd
+		m.logs, cmd = m.logs.Update(adjusted)
+		if isLeftClick {
+			return m.handleEnter()
+		}
 		return m, cmd
 	}
 	return m, nil
+}
+
+// adjustMouseY returns a new mouse message with Y adjusted by subtracting topOffset.
+func (m Model) adjustMouseY(msg tea.MouseMsg, topOffset int) tea.Msg {
+	switch msg := msg.(type) {
+	case tea.MouseClickMsg:
+		msg.Y -= topOffset
+		return msg
+	case tea.MouseReleaseMsg:
+		msg.Y -= topOffset
+		return msg
+	case tea.MouseWheelMsg:
+		msg.Y -= topOffset
+		return msg
+	case tea.MouseMotionMsg:
+		msg.Y -= topOffset
+		return msg
+	}
+	return msg
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -585,8 +742,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global keys
 	switch {
 	case key.Matches(msg, Keys.Quit):
-		m.confirmQuit = true
-		return m, nil
+		if m.view == ViewWorkflowRuns {
+			m.confirmQuit = true
+			return m, nil
+		}
+		return m.goBack()
 
 	case key.Matches(msg, Keys.Help):
 		m.showHelp = !m.showHelp
@@ -628,6 +788,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, Keys.OpenBrowser):
 		return m, m.openActionsInBrowser()
+
+	case key.Matches(msg, Keys.OpenSelected):
+		return m, m.openSelectedInBrowser()
+
+	case key.Matches(msg, Keys.OpenPRBranch):
+		return m, m.openPROrBranch()
 	}
 
 	// Sidebar tree navigation: h/l expand/collapse/drill-in
@@ -703,6 +869,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, Keys.Filter):
 			m.filter.Show()
+			m.updateLayout()
 			return m, nil
 
 		case key.Matches(msg, Keys.Refresh):
@@ -798,9 +965,14 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			}
 			switch node.Kind {
 			case NodeWorkflow:
+				if node.Workflow == nil {
+					// "All Workflows" — show all runs
+					filter := m.filter.CurrentFilter(0)
+					return m, m.fetchRuns(filter, true)
+				}
 				// Toggle expand/collapse; fetch runs if expanding and no children
 				expanded, n := m.tree.ToggleExpand()
-				if expanded && n != nil && n.Workflow != nil && len(n.Children) == 0 {
+				if expanded && n != nil && len(n.Children) == 0 {
 					m.tree.SetLoading(n.Workflow.ID)
 					return m, m.fetchRunsForTree(n.Workflow.ID)
 				}
@@ -849,8 +1021,19 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			}
 			switch node.Kind {
 			case NodeWorkflow:
+				if node.Workflow == nil {
+					// "All Workflows" — go back to runs view showing all
+					m.view = ViewWorkflowRuns
+					m.currentRun = nil
+					m.focus = FocusMain
+					m.tree.SetFocused(false)
+					m.runs.SetFocused(true)
+					m.updateLayout()
+					filter := m.filter.CurrentFilter(0)
+					return m, m.fetchRuns(filter, true)
+				}
 				expanded, n := m.tree.ToggleExpand()
-				if expanded && n != nil && n.Workflow != nil && len(n.Children) == 0 {
+				if expanded && n != nil && len(n.Children) == 0 {
 					m.tree.SetLoading(n.Workflow.ID)
 					return m, m.fetchRunsForTree(n.Workflow.ID)
 				}
@@ -1104,10 +1287,14 @@ func (m *Model) updateLayout() {
 		filterH = 3
 	}
 	helpH := 1
+	errH := 0
+	if m.err != nil {
+		errH = 1
+	}
 
 	switch m.view {
 	case ViewWorkflowRuns:
-		contentH := clamp(m.height-filterH-helpH, 4, m.height)
+		contentH := clamp(m.height-filterH-helpH-errH, 4, m.height)
 		if m.sidebarVisible {
 			sidebarW := clamp(m.width/4, 20, 35)
 			mainW := clamp(m.width-sidebarW, 10, m.width)
@@ -1119,7 +1306,7 @@ func (m *Model) updateLayout() {
 		m.filter.SetSize(m.width)
 
 	case ViewJobs:
-		contentH := clamp(m.height-helpH, 4, m.height)
+		contentH := clamp(m.height-helpH-errH, 4, m.height)
 		if m.sidebarVisible {
 			sidebarW := clamp(m.width/4, 20, 35)
 			mainW := clamp(m.width-sidebarW, 10, m.width)
@@ -1130,7 +1317,7 @@ func (m *Model) updateLayout() {
 		}
 
 	case ViewLogs:
-		contentH := clamp(m.height-helpH, 4, m.height)
+		contentH := clamp(m.height-helpH-errH, 4, m.height)
 		if m.sidebarVisible {
 			sidebarW := clamp(m.width/4, 20, 35)
 			mainW := clamp(m.width-sidebarW, 10, m.width)
@@ -1145,7 +1332,12 @@ func (m *Model) updateLayout() {
 func (m Model) viewWithMode(content string) tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
+	// Disable mouse capture in log content view so users can select text
+	if m.view == ViewLogs && !m.logs.InStepView() && !m.logs.Searching() {
+		v.MouseMode = tea.MouseModeNone
+	} else {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 	return v
 }
 
@@ -1243,7 +1435,7 @@ func (m Model) helpBarView() string {
 	if m.view == ViewJobs && m.currentRun != nil && m.currentRun.RunAttempt > 1 {
 		extra = "  [/]:attempt"
 	}
-	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc:back  /:filter  r:refresh  b:sidebar  S:switch repo  O:browser  ?:help  q:quit" + extra)
+	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc/q:back  /:filter  r:refresh  b:sidebar  o:open  p:PR/branch  O:actions  ?:help" + extra)
 	return repo + keys
 }
 
@@ -1297,15 +1489,17 @@ Tree Sidebar:
   enter         Expand/collapse or drill in
 
 Mouse:
-  click         Focus pane
+  click         Focus pane / select item
   scroll        Scroll content
 
 Actions:
   /             Open filter bar / search logs
   r             Refresh data
   b             Toggle sidebar
+  o             Open selected in browser
+  p             Open PR or branch in browser
+  O             Open actions page in browser
   S             Switch repository
-  O             Open actions in browser
   ?             Toggle help
   q             Quit
 

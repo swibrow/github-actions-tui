@@ -62,13 +62,14 @@ func NewLogsModel() LogsModel {
 }
 
 func (m *LogsModel) SetContent(content, jobName string) {
+	pendingScroll := m.scrollToStep
 	isRefresh := m.jobName == jobName && !m.loading
 	m.jobName = jobName
 	m.loading = false
 	m.showingSteps = false
 	m.jobStatus = "completed"
 
-	if isRefresh {
+	if isRefresh && pendingScroll < 0 {
 		// Preserve scroll position and search on poll refresh
 		yOff := m.viewport.YOffset()
 		m.rawContent = content
@@ -82,8 +83,8 @@ func (m *LogsModel) SetContent(content, jobName string) {
 		m.searchInput.SetValue("")
 		m.applyContent()
 
-		if m.scrollToStep >= 0 {
-			targetLine := m.lineForStep(m.scrollToStep)
+		if pendingScroll >= 0 {
+			targetLine := m.lineForStep(pendingScroll)
 			m.viewport.SetYOffset(targetLine)
 			m.scrollToStep = -1
 		} else {
@@ -226,8 +227,50 @@ func (m LogsModel) updateStepView(msg tea.Msg) (LogsModel, tea.Cmd) {
 			m.stepCursor = len(m.steps) - 1
 			m.scrollStepsToVisible()
 		}
+	case tea.MouseWheelMsg:
+		m.handleStepScroll(msg.Button)
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			m.handleStepClick(msg.Y)
+		}
 	}
 	return m, nil
+}
+
+func (m *LogsModel) handleStepScroll(button tea.MouseButton) {
+	delta := 3
+	innerH := m.height - 6
+	if innerH < 1 {
+		innerH = 1
+	}
+	switch button {
+	case tea.MouseWheelUp:
+		m.stepOffset -= delta
+		if m.stepOffset < 0 {
+			m.stepOffset = 0
+		}
+	case tea.MouseWheelDown:
+		maxOffset := len(m.steps) - innerH
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		m.stepOffset += delta
+		if m.stepOffset > maxOffset {
+			m.stepOffset = maxOffset
+		}
+	}
+}
+
+func (m *LogsModel) handleStepClick(absY int) {
+	// border(1) + title(1) + separator(1) + info(1) + blank(1) = 5 lines of header
+	relY := absY - 5
+	if relY < 0 {
+		return
+	}
+	idx := m.stepOffset + relY
+	if idx >= 0 && idx < len(m.steps) {
+		m.stepCursor = idx
+	}
 }
 
 func (m LogsModel) renderStepView(innerW int) string {
@@ -545,7 +588,7 @@ func (m LogsModel) View() string {
 	}
 	content = strings.Join(lines, "\n")
 
-	return style.Width(m.width - 2).Height(m.height - 2).Render(content)
+	return style.Width(m.width).Height(m.height).Render(content)
 }
 
 func (m LogsModel) renderLogView(innerW int) string {

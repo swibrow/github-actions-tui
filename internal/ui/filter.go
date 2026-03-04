@@ -166,7 +166,7 @@ func (m FilterModel) View() string {
 	}
 
 	content := lipgloss.JoinHorizontal(lipgloss.Top, joinWithSpaces(parts)...)
-	return styleFilterBar.Width(m.width - 2).Render(content)
+	return styleFilterBar.Width(m.width).Render(content)
 }
 
 func joinWithSpaces(parts []string) []string {
