@@ -177,6 +177,22 @@ func (c *CachedClient) SearchRepos(ctx context.Context, query string) ([]gh.Repo
 	return c.inner.SearchRepos(ctx, query)
 }
 
+func (c *CachedClient) FetchWorkflowFileContent(ctx context.Context, path string) (string, error) {
+	return c.inner.FetchWorkflowFileContent(ctx, path)
+}
+
+func (c *CachedClient) RerunWorkflow(ctx context.Context, runID int64) error {
+	return c.inner.RerunWorkflow(ctx, runID)
+}
+
+func (c *CachedClient) TriggerWorkflow(ctx context.Context, workflowID int64, ref string, inputs map[string]interface{}) error {
+	return c.inner.TriggerWorkflow(ctx, workflowID, ref, inputs)
+}
+
+func (c *CachedClient) FetchWorkflowInputs(ctx context.Context, path string) ([]gh.WorkflowInput, error) {
+	return c.inner.FetchWorkflowInputs(ctx, path)
+}
+
 // --- Helpers ---
 
 func (c *CachedClient) cacheRun(r gh.WorkflowRun) {

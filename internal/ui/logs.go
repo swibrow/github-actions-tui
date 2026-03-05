@@ -48,6 +48,7 @@ type LogsModel struct {
 	stepOffset     int          // scroll offset for long step lists
 	sections       []logSection // parsed group sections from log content
 	scrollToStep   int          // step index to scroll to when content loads (-1 = none)
+	fileViewMode   bool         // true when displaying a file (not logs)
 }
 
 func NewLogsModel() LogsModel {
@@ -67,6 +68,7 @@ func (m *LogsModel) SetContent(content, jobName string) {
 	m.jobName = jobName
 	m.loading = false
 	m.showingSteps = false
+	m.fileViewMode = false
 	m.jobStatus = "completed"
 
 	if isRefresh && pendingScroll < 0 {
@@ -328,6 +330,23 @@ func (m LogsModel) renderStepView(innerW int) string {
 	return strings.Join(parts, "\n")
 }
 
+// SetFileContent sets the viewport to display a raw file (no group/timestamp processing).
+func (m *LogsModel) SetFileContent(content, name string) {
+	m.jobName = name
+	m.loading = false
+	m.showingSteps = false
+	m.fileViewMode = true
+	m.jobStatus = "completed"
+	m.rawContent = content
+	m.searchTerm = ""
+	m.matchLines = nil
+	m.matchIdx = 0
+	m.searchInput.SetValue("")
+	m.sections = nil
+	m.viewport.SetContent(content)
+	m.viewport.GotoTop()
+}
+
 func (m *LogsModel) SetLoading(loading bool) {
 	m.loading = loading
 }
@@ -561,10 +580,15 @@ func (m LogsModel) View() string {
 		innerW = 10
 	}
 
+	titlePrefix := "Logs"
+	if m.fileViewMode {
+		titlePrefix = "Workflow"
+	}
+
 	var content string
 	if m.loading {
-		header := styleTitle.Render(fmt.Sprintf("Logs: %s", m.jobName))
-		content = header + "\n" + styleLoading.Render("  Loading logs...")
+		header := styleTitle.Render(fmt.Sprintf("%s: %s", titlePrefix, m.jobName))
+		content = header + "\n" + styleLoading.Render("  Loading...")
 	} else if m.showingSteps {
 		header := styleTitle.Render(fmt.Sprintf("Steps: %s", m.jobName))
 		separator := lipgloss.NewStyle().Foreground(colorBorder).
@@ -592,7 +616,11 @@ func (m LogsModel) View() string {
 }
 
 func (m LogsModel) renderLogView(innerW int) string {
-	header := styleTitle.Render(fmt.Sprintf("Logs: %s", m.jobName))
+	titlePrefix := "Logs"
+	if m.fileViewMode {
+		titlePrefix = "Workflow"
+	}
+	header := styleTitle.Render(fmt.Sprintf("%s: %s", titlePrefix, m.jobName))
 	separator := lipgloss.NewStyle().Foreground(colorBorder).
 		Render(strings.Repeat("─", innerW))
 

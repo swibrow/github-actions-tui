@@ -75,6 +75,16 @@ type RunFilter struct {
 	Event      string
 }
 
+// WorkflowInput describes a single workflow_dispatch input.
+type WorkflowInput struct {
+	Name        string
+	Description string
+	Required    bool
+	Default     string
+	Type        string // string, boolean, choice, environment
+	Options     []string
+}
+
 // GitHubClient is the interface satisfied by *Client and used by the UI layer.
 type GitHubClient interface {
 	FetchWorkflows(ctx context.Context) ([]Workflow, error)
@@ -84,6 +94,10 @@ type GitHubClient interface {
 	FetchJobLogs(ctx context.Context, jobID int64) (string, error)
 	FetchRunsForWorkflow(ctx context.Context, workflowID int64, count int) ([]WorkflowRun, error)
 	FetchWorkflowYAML(ctx context.Context, path string) (map[string][]string, error)
+	FetchWorkflowInputs(ctx context.Context, path string) ([]WorkflowInput, error)
+	FetchWorkflowFileContent(ctx context.Context, path string) (string, error)
+	RerunWorkflow(ctx context.Context, runID int64) error
+	TriggerWorkflow(ctx context.Context, workflowID int64, ref string, inputs map[string]interface{}) error
 	SwitchRepo(owner, repo string)
 	ListUserRepos(ctx context.Context) ([]Repository, error)
 	ListUserOrgs(ctx context.Context) ([]string, error)
@@ -421,6 +435,42 @@ func (c *Client) SearchRepos(ctx context.Context, query string) ([]Repository, e
 		})
 	}
 	return repos, nil
+}
+
+func (c *Client) FetchWorkflowFileContent(ctx context.Context, path string) (string, error) {
+	data, err := c.FetchFileContent(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func (c *Client) RerunWorkflow(ctx context.Context, runID int64) error {
+	_, err := c.gh.Actions.RerunWorkflowByID(ctx, c.owner, c.repo, runID)
+	if err != nil {
+		return fmt.Errorf("rerunning workflow: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) TriggerWorkflow(ctx context.Context, workflowID int64, ref string, inputs map[string]interface{}) error {
+	event := github.CreateWorkflowDispatchEventRequest{
+		Ref:    ref,
+		Inputs: inputs,
+	}
+	_, _, err := c.gh.Actions.CreateWorkflowDispatchEventByID(ctx, c.owner, c.repo, workflowID, event)
+	if err != nil {
+		return fmt.Errorf("triggering workflow: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) FetchWorkflowInputs(ctx context.Context, path string) ([]WorkflowInput, error) {
+	data, err := c.FetchFileContent(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	return ParseWorkflowInputs(data)
 }
 
 func HasActiveRuns(runs []WorkflowRun) bool {

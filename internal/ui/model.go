@@ -20,6 +20,7 @@ const (
 	ViewWorkflowRuns ViewState = iota
 	ViewJobs
 	ViewLogs
+	ViewWorkflowFile
 )
 
 type FocusPane int
@@ -65,6 +66,27 @@ type JobStatusMsg struct {
 
 type TickMsg time.Time
 
+// RerunMsg carries the result of a rerun request.
+type RerunMsg struct {
+	RunID int64
+	Err   error
+}
+
+// TriggerResultMsg carries the result of a workflow trigger request.
+type TriggerResultMsg struct {
+	Err error
+}
+
+// FileContentMsg carries fetched workflow file content.
+type FileContentMsg struct {
+	Content string
+	Name    string
+	Err     error
+}
+
+// StatusClearMsg clears the temporary status message.
+type StatusClearMsg struct{}
+
 type GGTimeoutMsg struct{}
 type BackLockMsg struct{}
 
@@ -98,12 +120,15 @@ type Model struct {
 	logs       LogsModel
 	filter     FilterModel
 	repoPicker RepoPickerModel
+	trigger    TriggerModel
 
 	view           ViewState
+	prevView       ViewState
 	focus          FocusPane
 	showHelp       bool
 	pendingG       bool
 	err            error
+	statusMsg      string
 	width          int
 	height         int
 	workflows      []gh.Workflow
@@ -131,6 +156,7 @@ func NewModel(client gh.GitHubClient, owner, repo string) Model {
 		logs:           NewLogsModel(),
 		filter:         NewFilterModel(),
 		repoPicker:     NewRepoPickerModel(),
+		trigger:        NewTriggerModel(),
 		view:           ViewWorkflowRuns,
 		focus:          FocusMain,
 		sidebarVisible: true,
@@ -215,6 +241,34 @@ func (m Model) searchRepos(query string) tea.Cmd {
 	return func() tea.Msg {
 		repos, err := m.client.SearchRepos(m.ctx, query)
 		return RepoSearchMsg{Repos: repos, Err: err}
+	}
+}
+
+func (m Model) rerunWorkflow(runID int64) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.RerunWorkflow(m.ctx, runID)
+		return RerunMsg{RunID: runID, Err: err}
+	}
+}
+
+func (m Model) triggerWorkflow(workflowID int64, ref string, inputs map[string]interface{}) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.TriggerWorkflow(m.ctx, workflowID, ref, inputs)
+		return TriggerResultMsg{Err: err}
+	}
+}
+
+func (m Model) fetchWorkflowInputs(workflowID int64, path string) tea.Cmd {
+	return func() tea.Msg {
+		inputs, err := m.client.FetchWorkflowInputs(m.ctx, path)
+		return WorkflowInputsMsg{WorkflowID: workflowID, Inputs: inputs, Err: err}
+	}
+}
+
+func (m Model) fetchWorkflowFileContent(path, name string) tea.Cmd {
+	return func() tea.Msg {
+		content, err := m.client.FetchWorkflowFileContent(m.ctx, path)
+		return FileContentMsg{Content: content, Name: name, Err: err}
 	}
 }
 
@@ -352,6 +406,12 @@ func (m Model) tickCmd() tea.Cmd {
 	})
 }
 
+func (m Model) statusClearCmd() tea.Cmd {
+	return tea.Tick(3*time.Second, func(_ time.Time) tea.Msg {
+		return StatusClearMsg{}
+	})
+}
+
 func (m Model) ggTimeoutCmd() tea.Cmd {
 	return tea.Tick(300*time.Millisecond, func(_ time.Time) tea.Msg {
 		return GGTimeoutMsg{}
@@ -463,6 +523,50 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logs.SetSteps(msg.Job.Steps, jobName, msg.Job.Status)
 		return m, nil
 
+	case RerunMsg:
+		if msg.Err != nil {
+			m.err = msg.Err
+			m.updateLayout()
+			return m, nil
+		}
+		m.statusMsg = fmt.Sprintf("Rerun triggered for run #%d", msg.RunID)
+		// Refresh current view after rerun
+		if m.view == ViewJobs && m.currentRun != nil {
+			m.graph.SetLoading(true)
+			return m, tea.Batch(m.fetchJobsForAttempt(m.currentRun.ID, m.currentAttempt), m.statusClearCmd())
+		}
+		wfID, _ := m.tree.SelectedWorkflow()
+		filter := m.filter.CurrentFilter(wfID)
+		return m, tea.Batch(m.fetchRuns(filter, false), m.statusClearCmd())
+
+	case TriggerResultMsg:
+		if msg.Err != nil {
+			m.err = msg.Err
+			m.updateLayout()
+			return m, nil
+		}
+		m.statusMsg = "Workflow triggered successfully"
+		// Refresh runs list after trigger
+		wfID, _ := m.tree.SelectedWorkflow()
+		filter := m.filter.CurrentFilter(wfID)
+		m.runs.SetLoading(true)
+		return m, tea.Batch(m.fetchRuns(filter, false), m.statusClearCmd())
+
+	case WorkflowInputsMsg:
+		if msg.Err != nil {
+			// Still show the dialog, just without inputs
+			m.trigger.SetInputs(nil)
+			return m, nil
+		}
+		m.trigger.SetInputs(msg.Inputs)
+		return m, nil
+
+	case TriggerSubmitMsg:
+		return m, m.triggerWorkflow(msg.WorkflowID, msg.Ref, msg.Inputs)
+
+	case TriggerCancelledMsg:
+		return m, nil
+
 	case TickMsg:
 		cmds := []tea.Cmd{m.tickCmd()}
 		switch m.view {
@@ -539,6 +643,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case RepoCancelledMsg:
 		return m, nil
 
+	case FileContentMsg:
+		if msg.Err != nil {
+			m.err = msg.Err
+			m.updateLayout()
+			return m, nil
+		}
+		m.logs.SetFileContent(msg.Content, msg.Name)
+		return m, nil
+
+	case StatusClearMsg:
+		m.statusMsg = ""
+		return m, nil
+
 	case GGTimeoutMsg:
 		m.pendingG = false
 		return m, nil
@@ -569,6 +686,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		// Trigger dialog captures all keys when visible
+		if m.trigger.Visible() {
+			var cmd tea.Cmd
+			m.trigger, cmd = m.trigger.Update(msg)
+			return m, cmd
+		}
+
 		// Filter captures all keys when visible
 		if m.filter.Visible() {
 			var cmd tea.Cmd
@@ -593,9 +717,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	mouse := msg.Mouse()
 
-	// Compute vertical offset of the content area (error bar pushes content down)
+	// Compute vertical offset of the content area (error/status bar pushes content down)
 	contentTopY := 0
-	if m.err != nil {
+	if m.err != nil || m.statusMsg != "" {
 		contentTopY = 1
 	}
 
@@ -676,7 +800,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 
-	case ViewLogs:
+	case ViewLogs, ViewWorkflowFile:
 		if inSidebar {
 			if m.focus != FocusSidebar {
 				m.focus = FocusSidebar
@@ -794,6 +918,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, Keys.OpenPRBranch):
 		return m, m.openPROrBranch()
+
+	case key.Matches(msg, Keys.RerunWorkflow):
+		return m.handleRerun()
+
+	case key.Matches(msg, Keys.TriggerWorkflow):
+		return m.handleTrigger()
+
+	case key.Matches(msg, Keys.ViewWorkflowFile):
+		return m.handleViewWorkflowFile()
 	}
 
 	// Sidebar tree navigation: h/l expand/collapse/drill-in
@@ -810,6 +943,38 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// View-specific keys
 	switch m.view {
+	case ViewWorkflowFile:
+		switch {
+		case key.Matches(msg, Keys.ToggleSidebar):
+			m.sidebarVisible = !m.sidebarVisible
+			if !m.sidebarVisible && m.focus == FocusSidebar {
+				m.focus = FocusMain
+				m.tree.SetFocused(false)
+				m.logs.SetFocused(true)
+			}
+			m.updateLayout()
+			return m, nil
+
+		case key.Matches(msg, Keys.Filter):
+			if m.focus == FocusMain {
+				m.logs.StartSearch()
+				return m, nil
+			}
+		}
+
+		if m.focus == FocusMain {
+			switch msg.String() {
+			case "n":
+				m.logs.NextMatch()
+				return m, nil
+			case "N":
+				m.logs.PrevMatch()
+				return m, nil
+			}
+		}
+
+		return m.updateFocused(msg)
+
 	case ViewLogs:
 		switch {
 		case key.Matches(msg, Keys.ToggleSidebar):
@@ -1107,6 +1272,123 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) handleRerun() (tea.Model, tea.Cmd) {
+	var run *gh.WorkflowRun
+
+	// Find the relevant run based on context
+	if m.focus == FocusSidebar {
+		node := m.tree.SelectedNode()
+		if node != nil && node.Run != nil {
+			run = node.Run
+		}
+	}
+	if run == nil {
+		switch m.view {
+		case ViewWorkflowRuns:
+			run = m.runs.SelectedRun()
+		case ViewJobs, ViewLogs:
+			run = m.currentRun
+		}
+	}
+
+	if run == nil {
+		return m, nil
+	}
+	return m, m.rerunWorkflow(run.ID)
+}
+
+func (m Model) handleTrigger() (tea.Model, tea.Cmd) {
+	// Find the workflow to trigger
+	var wfID int64
+	var wfName, wfPath string
+
+	if m.focus == FocusSidebar {
+		node := m.tree.SelectedNode()
+		if node != nil && node.Kind == NodeWorkflow && node.Workflow != nil {
+			wfID = node.Workflow.ID
+			wfName = node.Workflow.Name
+			wfPath = node.Workflow.Path
+		}
+	}
+
+	// If no workflow from sidebar, try to infer from current run or selected run
+	if wfID == 0 {
+		var run *gh.WorkflowRun
+		switch m.view {
+		case ViewWorkflowRuns:
+			run = m.runs.SelectedRun()
+		case ViewJobs, ViewLogs:
+			run = m.currentRun
+		}
+		if run != nil {
+			wfID = run.WorkflowID
+			wfName = run.Name
+			wfPath = m.workflowPath(wfID)
+		}
+	}
+
+	if wfID == 0 {
+		return m, nil
+	}
+
+	m.trigger.Show(wfID, wfName)
+	m.trigger.SetSize(m.width, m.height)
+
+	if wfPath != "" {
+		return m, m.fetchWorkflowInputs(wfID, wfPath)
+	}
+	// No path found, show dialog without inputs
+	m.trigger.SetInputs(nil)
+	return m, nil
+}
+
+func (m Model) handleViewWorkflowFile() (tea.Model, tea.Cmd) {
+	var wfID int64
+	var wfName, wfPath string
+
+	// Try sidebar first
+	if m.focus == FocusSidebar {
+		node := m.tree.SelectedNode()
+		if node != nil && node.Kind == NodeWorkflow && node.Workflow != nil {
+			wfID = node.Workflow.ID
+			wfName = node.Workflow.Name
+			wfPath = node.Workflow.Path
+		}
+	}
+
+	// Infer from run context
+	if wfID == 0 {
+		var run *gh.WorkflowRun
+		switch m.view {
+		case ViewWorkflowRuns:
+			run = m.runs.SelectedRun()
+		case ViewJobs, ViewLogs:
+			run = m.currentRun
+		}
+		if run != nil {
+			wfID = run.WorkflowID
+			wfName = run.Name
+			wfPath = m.workflowPath(wfID)
+		}
+	}
+
+	if wfPath == "" {
+		return m, nil
+	}
+
+	m.prevView = m.view
+	m.view = ViewWorkflowFile
+	m.focus = FocusMain
+	m.logs.SetLoading(true)
+	m.logs.SetFocused(true)
+	m.tree.SetFocused(false)
+	m.runs.SetFocused(false)
+	m.graph.SetFocused(false)
+	m.updateLayout()
+	_ = wfID
+	return m, m.fetchWorkflowFileContent(wfPath, wfName)
+}
+
 func (m Model) toggleFocus() (tea.Model, tea.Cmd) {
 	if m.focus == FocusSidebar {
 		m.focus = FocusMain
@@ -1116,7 +1398,7 @@ func (m Model) toggleFocus() (tea.Model, tea.Cmd) {
 			m.runs.SetFocused(true)
 		case ViewJobs:
 			m.graph.SetFocused(true)
-		case ViewLogs:
+		case ViewLogs, ViewWorkflowFile:
 			m.logs.SetFocused(true)
 		}
 	} else {
@@ -1127,7 +1409,7 @@ func (m Model) toggleFocus() (tea.Model, tea.Cmd) {
 			m.runs.SetFocused(false)
 		case ViewJobs:
 			m.graph.SetFocused(false)
-		case ViewLogs:
+		case ViewLogs, ViewWorkflowFile:
 			m.logs.SetFocused(false)
 		}
 	}
@@ -1136,6 +1418,21 @@ func (m Model) toggleFocus() (tea.Model, tea.Cmd) {
 
 func (m Model) goBack() (tea.Model, tea.Cmd) {
 	switch m.view {
+	case ViewWorkflowFile:
+		m.view = m.prevView
+		m.focus = FocusMain
+		m.logs.SetFocused(false)
+		m.tree.SetFocused(false)
+		switch m.prevView {
+		case ViewWorkflowRuns:
+			m.runs.SetFocused(true)
+		case ViewJobs:
+			m.graph.SetFocused(true)
+		case ViewLogs:
+			m.logs.SetFocused(true)
+		}
+		m.updateLayout()
+		return m, nil
 	case ViewLogs:
 		// If viewing log content, go back to step view first
 		if !m.logs.InStepView() && m.logs.BackToSteps() {
@@ -1231,7 +1528,7 @@ func (m Model) updateFocused(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.graph, cmd = m.graph.Update(msg)
 		}
-	case ViewLogs:
+	case ViewLogs, ViewWorkflowFile:
 		if m.focus == FocusSidebar {
 			m.tree, cmd = m.tree.Update(msg)
 		} else {
@@ -1253,6 +1550,7 @@ func (m Model) switchRepo(owner, repo string) (tea.Model, tea.Cmd) {
 	m.currentJob = nil
 	m.currentAttempt = 0
 	m.err = nil
+	m.statusMsg = ""
 	m.showHelp = false
 	m.confirmQuit = false
 	m.pendingG = false
@@ -1267,6 +1565,7 @@ func (m Model) switchRepo(owner, repo string) (tea.Model, tea.Cmd) {
 	m.graph = NewGraphModel()
 	m.logs = NewLogsModel()
 	m.filter = NewFilterModel()
+	m.trigger = NewTriggerModel()
 
 	m.updateLayout()
 
@@ -1288,7 +1587,7 @@ func (m *Model) updateLayout() {
 	}
 	helpH := 1
 	errH := 0
-	if m.err != nil {
+	if m.err != nil || m.statusMsg != "" {
 		errH = 1
 	}
 
@@ -1316,7 +1615,7 @@ func (m *Model) updateLayout() {
 			m.graph.SetSize(m.width, contentH)
 		}
 
-	case ViewLogs:
+	case ViewLogs, ViewWorkflowFile:
 		contentH := clamp(m.height-helpH-errH, 4, m.height)
 		if m.sidebarVisible {
 			sidebarW := clamp(m.width/4, 20, 35)
@@ -1332,8 +1631,10 @@ func (m *Model) updateLayout() {
 func (m Model) viewWithMode(content string) tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
-	// Disable mouse capture in log content view so users can select text
-	if m.view == ViewLogs && !m.logs.InStepView() && !m.logs.Searching() {
+	// Disable mouse capture in log/file content view so users can select text
+	if m.view == ViewWorkflowFile && !m.logs.Searching() {
+		v.MouseMode = tea.MouseModeNone
+	} else if m.view == ViewLogs && !m.logs.InStepView() && !m.logs.Searching() {
 		v.MouseMode = tea.MouseModeNone
 	} else {
 		v.MouseMode = tea.MouseModeCellMotion
@@ -1346,10 +1647,12 @@ func (m Model) View() tea.View {
 		return m.viewWithMode("Loading...")
 	}
 
-	// Error bar
+	// Error bar / status bar
 	errBar := ""
 	if m.err != nil {
 		errBar = styleError.Width(m.width).Render(fmt.Sprintf("Error: %s", m.err))
+	} else if m.statusMsg != "" {
+		errBar = styleStatusBar.Width(m.width).Render(m.statusMsg)
 	}
 
 	// Confirm quit dialog
@@ -1367,10 +1670,15 @@ func (m Model) View() tea.View {
 		return m.viewWithMode(m.repoPicker.View(m.width, m.height))
 	}
 
+	// Trigger workflow overlay
+	if m.trigger.Visible() {
+		return m.viewWithMode(m.trigger.View(m.width, m.height))
+	}
+
 	var output string
 
 	switch m.view {
-	case ViewLogs:
+	case ViewLogs, ViewWorkflowFile:
 		var content string
 		if m.sidebarVisible {
 			sidebar := m.tree.View()
@@ -1435,7 +1743,7 @@ func (m Model) helpBarView() string {
 	if m.view == ViewJobs && m.currentRun != nil && m.currentRun.RunAttempt > 1 {
 		extra = "  [/]:attempt"
 	}
-	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc/q:back  /:filter  r:refresh  b:sidebar  o:open  p:PR/branch  O:actions  ?:help" + extra)
+	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc/q:back  /:filter  r:refresh  R:rerun  T:trigger  w:workflow  b:sidebar  o:open  p:PR/branch  O:actions  ?:help" + extra)
 	return repo + keys
 }
 
@@ -1495,6 +1803,9 @@ Mouse:
 Actions:
   /             Open filter bar / search logs
   r             Refresh data
+  R             Rerun selected workflow run
+  T             Trigger workflow (dispatch)
+  w             View workflow file
   b             Toggle sidebar
   o             Open selected in browser
   p             Open PR or branch in browser

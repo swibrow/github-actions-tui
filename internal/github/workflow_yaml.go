@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -10,7 +11,24 @@ import (
 
 // workflowFile represents the top-level structure of a GitHub Actions workflow YAML.
 type workflowFile struct {
+	On   workflowOn             `yaml:"on"`
 	Jobs map[string]workflowJob `yaml:"jobs"`
+}
+
+type workflowOn struct {
+	WorkflowDispatch *workflowDispatch `yaml:"workflow_dispatch"`
+}
+
+type workflowDispatch struct {
+	Inputs map[string]workflowInputDef `yaml:"inputs"`
+}
+
+type workflowInputDef struct {
+	Description string      `yaml:"description"`
+	Required    bool        `yaml:"required"`
+	Default     interface{} `yaml:"default"`
+	Type        string      `yaml:"type"`
+	Options     []string    `yaml:"options"`
 }
 
 type workflowJob struct {
@@ -51,6 +69,47 @@ func (c *Client) FetchWorkflowYAML(ctx context.Context, path string) (map[string
 		return nil, err
 	}
 	return ParseJobDependencies(data)
+}
+
+// ParseWorkflowInputs parses a workflow YAML and returns the workflow_dispatch inputs.
+func ParseWorkflowInputs(data []byte) ([]WorkflowInput, error) {
+	// The "on" key can be a string, list, or map. We need the map form.
+	// Try parsing with the struct first; if that fails, there's no workflow_dispatch.
+	var wf workflowFile
+	if err := yaml.Unmarshal(data, &wf); err != nil {
+		return nil, err
+	}
+
+	if wf.On.WorkflowDispatch == nil || len(wf.On.WorkflowDispatch.Inputs) == 0 {
+		return nil, nil
+	}
+
+	inputs := make([]WorkflowInput, 0, len(wf.On.WorkflowDispatch.Inputs))
+	for name, def := range wf.On.WorkflowDispatch.Inputs {
+		defStr := ""
+		if def.Default != nil {
+			defStr = fmt.Sprintf("%v", def.Default)
+		}
+		typ := def.Type
+		if typ == "" {
+			typ = "string"
+		}
+		inputs = append(inputs, WorkflowInput{
+			Name:        name,
+			Description: def.Description,
+			Required:    def.Required,
+			Default:     defStr,
+			Type:        typ,
+			Options:     def.Options,
+		})
+	}
+
+	// Sort by name for consistent ordering
+	sort.Slice(inputs, func(i, j int) bool {
+		return inputs[i].Name < inputs[j].Name
+	})
+
+	return inputs, nil
 }
 
 // InferJobDependencies infers job dependency tiers from start times.
