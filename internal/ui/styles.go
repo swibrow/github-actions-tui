@@ -109,6 +109,11 @@ var (
 	styleRepoIndicator = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(colorPrimary)
+
+	styleStatusBar = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("15")).
+			Background(colorSuccess).
+			Padding(0, 1)
 )
 
 // StatusIcon returns a styled (ANSI-colored) status icon.

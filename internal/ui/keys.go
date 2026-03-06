@@ -21,8 +21,11 @@ type KeyMap struct {
 	OpenBrowser   key.Binding
 	OpenSelected  key.Binding
 	OpenPRBranch  key.Binding
-	PrevAttempt   key.Binding
-	NextAttempt   key.Binding
+	PrevAttempt      key.Binding
+	NextAttempt      key.Binding
+	RerunWorkflow    key.Binding
+	TriggerWorkflow  key.Binding
+	ViewWorkflowFile key.Binding
 }
 
 var Keys = KeyMap{
@@ -105,6 +108,18 @@ var Keys = KeyMap{
 	NextAttempt: key.NewBinding(
 		key.WithKeys("]"),
 		key.WithHelp("", ""),
+	),
+	RerunWorkflow: key.NewBinding(
+		key.WithKeys("R"),
+		key.WithHelp("R", "rerun"),
+	),
+	TriggerWorkflow: key.NewBinding(
+		key.WithKeys("T"),
+		key.WithHelp("T", "trigger"),
+	),
+	ViewWorkflowFile: key.NewBinding(
+		key.WithKeys("w"),
+		key.WithHelp("w", "view workflow"),
 	),
 }
 
