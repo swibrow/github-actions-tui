@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/swibrow/github-actions-tui/compare/v0.2.2...v0.3.0) (2026-03-06)
+
+
+### Features
+
+* add workflow rerun, trigger dispatch, and file viewer ([f284b9b](https://github.com/swibrow/github-actions-tui/commit/f284b9b7b782beaa2b8de4e6d04095c9dfa5f580))
+* add workflow rerun, trigger dispatch, and file viewer ([e654d52](https://github.com/swibrow/github-actions-tui/commit/e654d52ac3e94e6090e74c4281f1377cbaf10796))
+
 ## [0.2.2](https://github.com/swibrow/github-actions-tui/compare/v0.2.1...v0.2.2) (2026-03-04)
 
 
