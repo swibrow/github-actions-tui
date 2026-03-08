@@ -9,7 +9,7 @@ require (
 	github.com/cli/go-gh/v2 v2.13.0
 	github.com/google/go-github/v84 v84.0.0
 	github.com/sahilm/fuzzy v0.1.1
-	golang.org/x/oauth2 v0.35.0
+	golang.org/x/oauth2 v0.36.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.46.1
 )
