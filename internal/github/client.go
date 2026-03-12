@@ -97,6 +97,7 @@ type GitHubClient interface {
 	FetchWorkflowInputs(ctx context.Context, path string) ([]WorkflowInput, error)
 	FetchWorkflowFileContent(ctx context.Context, path string) (string, error)
 	RerunWorkflow(ctx context.Context, runID int64) error
+	RerunFailedJobs(ctx context.Context, runID int64) error
 	TriggerWorkflow(ctx context.Context, workflowID int64, ref string, inputs map[string]interface{}) error
 	SwitchRepo(owner, repo string)
 	ListUserRepos(ctx context.Context) ([]Repository, error)
@@ -449,6 +450,14 @@ func (c *Client) RerunWorkflow(ctx context.Context, runID int64) error {
 	_, err := c.gh.Actions.RerunWorkflowByID(ctx, c.owner, c.repo, runID)
 	if err != nil {
 		return fmt.Errorf("rerunning workflow: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) RerunFailedJobs(ctx context.Context, runID int64) error {
+	_, err := c.gh.Actions.RerunFailedJobsByID(ctx, c.owner, c.repo, runID)
+	if err != nil {
+		return fmt.Errorf("rerunning failed jobs: %w", err)
 	}
 	return nil
 }

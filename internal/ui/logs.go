@@ -135,6 +135,21 @@ func (m *LogsModel) SetScrollToStep(idx int) {
 	m.scrollToStep = idx
 }
 
+// stepMatchesSection checks if a step name corresponds to a log section name.
+// GitHub Actions step names (from the API) may differ from log group names when
+// the workflow YAML uses custom step names.
+func stepMatchesSection(stepName, sectionName string) bool {
+	if stepName == sectionName {
+		return true
+	}
+	sLower := strings.ToLower(stepName)
+	secLower := strings.ToLower(sectionName)
+	if sLower == secLower {
+		return true
+	}
+	return strings.Contains(secLower, sLower) || strings.Contains(sLower, secLower)
+}
+
 // lineForStep finds the line number for a step by matching against section names.
 func (m *LogsModel) lineForStep(stepIdx int) int {
 	if len(m.sections) == 0 || stepIdx < 0 || stepIdx >= len(m.steps) {
@@ -150,16 +165,43 @@ func (m *LogsModel) lineForStep(stepIdx int) int {
 		}
 	}
 
-	// Substring match (GitHub wraps names like "Run actions/checkout@v4")
+	// Case-insensitive exact match
 	for _, sec := range m.sections {
-		if strings.Contains(sec.Name, stepName) || strings.Contains(stepName, sec.Name) {
+		if strings.EqualFold(sec.Name, stepName) {
 			return sec.Line
 		}
 	}
 
-	// Positional fallback
-	if stepIdx < len(m.sections) {
-		return m.sections[stepIdx].Line
+	// Substring match (GitHub wraps names like "Run actions/checkout@v4")
+	for _, sec := range m.sections {
+		if strings.Contains(strings.ToLower(sec.Name), strings.ToLower(stepName)) ||
+			strings.Contains(strings.ToLower(stepName), strings.ToLower(sec.Name)) {
+			return sec.Line
+		}
+	}
+
+	// Positional fallback: walk steps and sections in order to align them.
+	// Not all steps have ##[group] sections (e.g. "Set up job", "Complete job"),
+	// so we can't assume step index N maps to section index N.
+	// Instead, greedily match each step to sections in order, then use
+	// the aligned section index for the target step.
+	secIdx := 0
+	for i, step := range m.steps {
+		if secIdx >= len(m.sections) {
+			break
+		}
+		if i == stepIdx {
+			return m.sections[secIdx].Line
+		}
+		// If this step matches the current section, advance to next section
+		if stepMatchesSection(step.Name, m.sections[secIdx].Name) {
+			secIdx++
+		}
+	}
+
+	// Target step is past all sections — return last section
+	if len(m.sections) > 0 {
+		return m.sections[len(m.sections)-1].Line
 	}
 
 	return 0
@@ -231,10 +273,6 @@ func (m LogsModel) updateStepView(msg tea.Msg) (LogsModel, tea.Cmd) {
 		}
 	case tea.MouseWheelMsg:
 		m.handleStepScroll(msg.Button)
-	case tea.MouseClickMsg:
-		if msg.Button == tea.MouseLeft {
-			m.handleStepClick(msg.Y)
-		}
 	}
 	return m, nil
 }
@@ -260,18 +298,6 @@ func (m *LogsModel) handleStepScroll(button tea.MouseButton) {
 		if m.stepOffset > maxOffset {
 			m.stepOffset = maxOffset
 		}
-	}
-}
-
-func (m *LogsModel) handleStepClick(absY int) {
-	// border(1) + title(1) + separator(1) + info(1) + blank(1) = 5 lines of header
-	relY := absY - 5
-	if relY < 0 {
-		return
-	}
-	idx := m.stepOffset + relY
-	if idx >= 0 && idx < len(m.steps) {
-		m.stepCursor = idx
 	}
 }
 

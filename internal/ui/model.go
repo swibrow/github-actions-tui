@@ -68,8 +68,9 @@ type TickMsg time.Time
 
 // RerunMsg carries the result of a rerun request.
 type RerunMsg struct {
-	RunID int64
-	Err   error
+	RunID      int64
+	FailedOnly bool
+	Err        error
 }
 
 // TriggerResultMsg carries the result of a workflow trigger request.
@@ -137,6 +138,8 @@ type Model struct {
 	currentAttempt int
 	sidebarVisible bool
 	confirmQuit    bool
+	rerunChoice    bool  // true when showing rerun choice dialog
+	rerunRunID     int64 // run ID for pending rerun choice
 	backLocked     bool
 	yamlCache      map[string]map[string][]string // path -> job deps
 	repoOwner      string
@@ -248,6 +251,13 @@ func (m Model) rerunWorkflow(runID int64) tea.Cmd {
 	return func() tea.Msg {
 		err := m.client.RerunWorkflow(m.ctx, runID)
 		return RerunMsg{RunID: runID, Err: err}
+	}
+}
+
+func (m Model) rerunFailedJobs(runID int64) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.RerunFailedJobs(m.ctx, runID)
+		return RerunMsg{RunID: runID, FailedOnly: true, Err: err}
 	}
 }
 
@@ -529,7 +539,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateLayout()
 			return m, nil
 		}
-		m.statusMsg = fmt.Sprintf("Rerun triggered for run #%d", msg.RunID)
+		if msg.FailedOnly {
+			m.statusMsg = fmt.Sprintf("Rerun failed jobs triggered for run #%d", msg.RunID)
+		} else {
+			m.statusMsg = fmt.Sprintf("Rerun triggered for run #%d", msg.RunID)
+		}
 		// Refresh current view after rerun
 		if m.view == ViewJobs && m.currentRun != nil {
 			m.graph.SetLoading(true)
@@ -715,7 +729,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	mouse := msg.Mouse()
+	// Only handle scroll wheel — click navigation is disabled
+	if _, ok := msg.(tea.MouseClickMsg); ok {
+		return m, nil
+	}
 
 	// Compute vertical offset of the content area (error/status bar pushes content down)
 	contentTopY := 0
@@ -723,109 +740,37 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		contentTopY = 1
 	}
 
-	// Determine sidebar width
-	sidebarW := 0
-	if m.sidebarVisible {
-		sidebarW = clamp(m.width/4, 20, 35)
-	}
-
-	// Determine which pane the mouse targets and switch focus
-	inSidebar := m.sidebarVisible && mouse.X < sidebarW
-
-	// Right click → go back (like esc)
-	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseRight {
-		return m.goBack()
-	}
-
-	// Check if this is a left click (for drill-in after cursor move)
-	isLeftClick := false
-	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
-		isLeftClick = true
-	}
+	adjusted := m.adjustMouseY(msg, contentTopY)
 
 	switch m.view {
 	case ViewWorkflowRuns:
-		if inSidebar {
-			if m.focus != FocusSidebar {
-				m.focus = FocusSidebar
-				m.tree.SetFocused(true)
-				m.runs.SetFocused(false)
-			}
-			adjusted := m.adjustMouseY(msg, contentTopY)
+		if m.focus == FocusSidebar {
 			var cmd tea.Cmd
 			m.tree, cmd = m.tree.Update(adjusted)
-			if isLeftClick {
-				return m.handleEnter()
-			}
 			return m, cmd
 		}
-		if m.focus != FocusMain {
-			m.focus = FocusMain
-			m.tree.SetFocused(false)
-			m.runs.SetFocused(true)
-		}
-		adjusted := m.adjustMouseY(msg, contentTopY)
 		var cmd tea.Cmd
 		m.runs, cmd = m.runs.Update(adjusted)
-		if isLeftClick {
-			return m.handleEnter()
-		}
 		return m, cmd
 
 	case ViewJobs:
-		if inSidebar {
-			if m.focus != FocusSidebar {
-				m.focus = FocusSidebar
-				m.tree.SetFocused(true)
-				m.graph.SetFocused(false)
-			}
-			adjusted := m.adjustMouseY(msg, contentTopY)
+		if m.focus == FocusSidebar {
 			var cmd tea.Cmd
 			m.tree, cmd = m.tree.Update(adjusted)
-			if isLeftClick {
-				return m.handleEnter()
-			}
 			return m, cmd
 		}
-		if m.focus != FocusMain {
-			m.focus = FocusMain
-			m.tree.SetFocused(false)
-			m.graph.SetFocused(true)
-		}
-		adjusted := m.adjustMouseY(msg, contentTopY)
 		var cmd tea.Cmd
 		m.graph, cmd = m.graph.Update(adjusted)
-		if isLeftClick {
-			return m.handleEnter()
-		}
 		return m, cmd
 
 	case ViewLogs, ViewWorkflowFile:
-		if inSidebar {
-			if m.focus != FocusSidebar {
-				m.focus = FocusSidebar
-				m.tree.SetFocused(true)
-				m.logs.SetFocused(false)
-			}
-			adjusted := m.adjustMouseY(msg, contentTopY)
+		if m.focus == FocusSidebar {
 			var cmd tea.Cmd
 			m.tree, cmd = m.tree.Update(adjusted)
-			if isLeftClick {
-				return m.handleEnter()
-			}
 			return m, cmd
 		}
-		if m.focus != FocusMain {
-			m.focus = FocusMain
-			m.tree.SetFocused(false)
-			m.logs.SetFocused(true)
-		}
-		adjusted := m.adjustMouseY(msg, contentTopY)
 		var cmd tea.Cmd
 		m.logs, cmd = m.logs.Update(adjusted)
-		if isLeftClick {
-			return m.handleEnter()
-		}
 		return m, cmd
 	}
 	return m, nil
@@ -858,6 +803,22 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "n", "esc":
 			m.confirmQuit = false
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Handle rerun choice dialog
+	if m.rerunChoice {
+		switch msg.String() {
+		case "a":
+			m.rerunChoice = false
+			return m, m.rerunWorkflow(m.rerunRunID)
+		case "f":
+			m.rerunChoice = false
+			return m, m.rerunFailedJobs(m.rerunRunID)
+		case "esc", "q", "n":
+			m.rerunChoice = false
 			return m, nil
 		}
 		return m, nil
@@ -1294,7 +1255,10 @@ func (m Model) handleRerun() (tea.Model, tea.Cmd) {
 	if run == nil {
 		return m, nil
 	}
-	return m, m.rerunWorkflow(run.ID)
+
+	m.rerunRunID = run.ID
+	m.rerunChoice = true
+	return m, nil
 }
 
 func (m Model) handleTrigger() (tea.Model, tea.Cmd) {
@@ -1553,6 +1517,7 @@ func (m Model) switchRepo(owner, repo string) (tea.Model, tea.Cmd) {
 	m.statusMsg = ""
 	m.showHelp = false
 	m.confirmQuit = false
+	m.rerunChoice = false
 	m.pendingG = false
 	m.workflows = nil
 	m.yamlCache = make(map[string]map[string][]string)
@@ -1658,6 +1623,11 @@ func (m Model) View() tea.View {
 	// Confirm quit dialog
 	if m.confirmQuit {
 		return m.viewWithMode(m.confirmQuitView())
+	}
+
+	// Rerun choice dialog
+	if m.rerunChoice {
+		return m.viewWithMode(m.rerunChoiceView())
 	}
 
 	// Help overlay
@@ -1769,6 +1739,13 @@ func (m Model) workflowPath(workflowID int64) string {
 
 func (m Model) confirmQuitView() string {
 	dialog := styleConfirmDialog.Render("Quit? (y/n)")
+	return lipgloss.Place(m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		dialog)
+}
+
+func (m Model) rerunChoiceView() string {
+	dialog := styleConfirmDialog.Render("Rerun: (a)ll  (f)ailed  (esc) cancel")
 	return lipgloss.Place(m.width, m.height,
 		lipgloss.Center, lipgloss.Center,
 		dialog)

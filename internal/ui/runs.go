@@ -242,28 +242,10 @@ func (m RunsModel) Update(msg tea.Msg) (RunsModel, tea.Cmd) {
 			m.table.MoveDown(3)
 		}
 		return m, nil
-	case tea.MouseClickMsg:
-		if msg.Button == tea.MouseLeft {
-			m.handleClick(msg.Y)
-			return m, nil
-		}
 	}
 	var cmd tea.Cmd
 	m.table, cmd = m.table.Update(msg)
 	return m, cmd
-}
-
-func (m *RunsModel) handleClick(absY int) {
-	// border(1) + title(1) + table header(1) + header border(1) = 4 lines of header
-	relY := absY - 4
-	if relY < 0 {
-		return
-	}
-	idx := relY
-	rows := m.table.Rows()
-	if idx >= 0 && idx < len(rows) {
-		m.table.SetCursor(idx)
-	}
 }
 
 func (m RunsModel) View() string {
