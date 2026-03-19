@@ -203,10 +203,6 @@ func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 		}
 	case tea.MouseWheelMsg:
 		m.handleScroll(msg.Button)
-	case tea.MouseClickMsg:
-		if msg.Button == tea.MouseLeft {
-			m.handleClick(msg.Y)
-		}
 	}
 	return m, nil
 }
@@ -228,18 +224,6 @@ func (m *TreeModel) handleScroll(button tea.MouseButton) {
 		if m.offset > maxOffset {
 			m.offset = maxOffset
 		}
-	}
-}
-
-func (m *TreeModel) handleClick(absY int) {
-	// border(1) + title(1) = 2 lines of header within the component
-	relY := absY - 2
-	if relY < 0 {
-		return
-	}
-	idx := m.offset + relY
-	if idx >= 0 && idx < len(m.flat) {
-		m.cursor = idx
 	}
 }
 

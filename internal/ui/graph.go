@@ -247,10 +247,6 @@ func (m GraphModel) Update(msg tea.Msg) (GraphModel, tea.Cmd) {
 		}
 	case tea.MouseWheelMsg:
 		m.handleScroll(msg.Button)
-	case tea.MouseClickMsg:
-		if msg.Button == tea.MouseLeft {
-			m.handleClick(msg.Y)
-		}
 	}
 	return m, nil
 }
@@ -279,73 +275,6 @@ func (m *GraphModel) handleScroll(button tea.MouseButton) {
 		if m.offset > maxOffset {
 			m.offset = maxOffset
 		}
-	}
-}
-
-func (m *GraphModel) handleClick(absY int) {
-	// border(1) + title(1) = 2 lines of header, possibly +1 for attempt line
-	headerLines := 2
-	if m.totalAttempts > 1 {
-		headerLines = 3
-	}
-	relY := absY - headerLines
-	if relY < 0 {
-		return
-	}
-
-	// Build a line-to-flatIndex map matching the View() layout
-	lineToFlat := make(map[int]int)
-	lineIdx := 0
-	flatIdx := 0
-	for _, tier := range m.tiers {
-		lineIdx++ // tier label
-		for range tier.Jobs {
-			lineToFlat[lineIdx] = flatIdx
-			lineIdx++
-			flatIdx++
-		}
-		lineIdx++ // blank line between tiers
-	}
-
-	// Account for scroll offset used in View()
-	innerH := m.height - 3 // border(2) + title(1)
-	if m.totalAttempts > 1 {
-		innerH--
-	}
-	if innerH < 1 {
-		innerH = 1
-	}
-	// Recompute scrollOffset same as View()
-	cursorLine := 0
-	lineIdx = 0
-	flatIdx = 0
-	for _, tier := range m.tiers {
-		lineIdx++
-		for range tier.Jobs {
-			if flatIdx == m.cursor {
-				cursorLine = lineIdx
-			}
-			lineIdx++
-			flatIdx++
-		}
-		lineIdx++
-	}
-	scrollOffset := 0
-	if cursorLine >= innerH {
-		scrollOffset = cursorLine - innerH + 1
-	}
-	maxOffset := lineIdx - innerH
-	if maxOffset < 0 {
-		maxOffset = 0
-	}
-	if scrollOffset > maxOffset {
-		scrollOffset = maxOffset
-	}
-
-	clickedLine := relY + scrollOffset
-	if fi, ok := lineToFlat[clickedLine]; ok && fi < len(m.flat) {
-		m.cursor = fi
-		m.scrollToVisible()
 	}
 }
 

@@ -185,6 +185,10 @@ func (c *CachedClient) RerunWorkflow(ctx context.Context, runID int64) error {
 	return c.inner.RerunWorkflow(ctx, runID)
 }
 
+func (c *CachedClient) RerunFailedJobs(ctx context.Context, runID int64) error {
+	return c.inner.RerunFailedJobs(ctx, runID)
+}
+
 func (c *CachedClient) TriggerWorkflow(ctx context.Context, workflowID int64, ref string, inputs map[string]interface{}) error {
 	return c.inner.TriggerWorkflow(ctx, workflowID, ref, inputs)
 }
