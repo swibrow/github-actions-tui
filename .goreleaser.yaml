@@ -24,6 +24,7 @@ brews:
       owner: swibrow
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
     name: gha
     homepage: https://github.com/swibrow/github-actions-tui
     description: Terminal UI for GitHub Actions
