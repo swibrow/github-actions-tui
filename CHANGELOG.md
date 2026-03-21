@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/swibrow/github-actions-tui/compare/v0.3.0...v0.4.0) (2026-03-21)
+
+
+### Features
+
+* add rerun failed jobs option, fix log step navigation, remove m… ([ec5d5f9](https://github.com/swibrow/github-actions-tui/commit/ec5d5f94155e306458650288c19d4c2463eaff4a))
+* add rerun failed jobs option, fix log step navigation, remove mouse click ([e1c56b2](https://github.com/swibrow/github-actions-tui/commit/e1c56b2dd49b042b22efe4b1211b414a9b14c51e))
+
 ## [0.3.0](https://github.com/swibrow/github-actions-tui/compare/v0.2.2...v0.3.0) (2026-03-06)
 
 
