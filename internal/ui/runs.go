@@ -255,9 +255,14 @@ func (m RunsModel) View() string {
 	}
 
 	var content string
-	header := styleTitle.Render(m.title) + "\n"
+	header := styleTitle.Render(m.title)
+	if m.loading && len(m.runs) > 0 {
+		// Background refresh — keep showing current rows with a hint
+		header += styleLoading.Render("  refreshing…")
+	}
+	header += "\n"
 
-	if m.loading {
+	if m.loading && len(m.runs) == 0 {
 		content = header + styleLoading.Render("  Loading runs...")
 	} else if len(m.runs) == 0 {
 		content = header + styleLoading.Render("  No runs found")

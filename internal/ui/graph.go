@@ -184,6 +184,15 @@ func (m GraphModel) SelectedJob() *gh.WorkflowJob {
 }
 
 func (m *GraphModel) SetRunInfo(runName string, currentAttempt, totalAttempts int) {
+	if runName != m.runName {
+		// Different run/attempt — drop stale jobs so loading shows cleanly
+		// instead of another run's content under the new title
+		m.jobs = nil
+		m.tiers = nil
+		m.flat = nil
+		m.cursor = 0
+		m.offset = 0
+	}
 	m.runName = runName
 	m.currentAttempt = currentAttempt
 	m.totalAttempts = totalAttempts
@@ -284,12 +293,17 @@ func (m GraphModel) View() string {
 		style = styleMainFocused
 	}
 
-	title := styleTitle.Render(fmt.Sprintf("Jobs: %s", m.runName)) + "\n"
+	title := styleTitle.Render(fmt.Sprintf("Jobs: %s", m.runName))
+	if m.loading && len(m.flat) > 0 {
+		// Background refresh — keep showing current jobs with a hint
+		title += styleLoading.Render("  refreshing…")
+	}
+	title += "\n"
 	if m.totalAttempts > 1 {
 		title += styleHelpBar.Render(fmt.Sprintf("  ← [ attempt %d/%d ] →", m.currentAttempt, m.totalAttempts)) + "\n"
 	}
 
-	if m.loading {
+	if m.loading && len(m.flat) == 0 {
 		content := title + styleLoading.Render("  Loading jobs...")
 		return m.renderBox(style, content)
 	}

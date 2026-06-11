@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"time"
+
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -16,6 +18,13 @@ const (
 )
 
 type FilterAppliedMsg struct {
+	Filter gh.RunFilter
+}
+
+// FilterLiveMsg fires after a short debounce while typing in the filter bar,
+// so results update without pressing enter. Filter carries a snapshot of the
+// input values at the time of the keystroke; it is dropped if they changed since.
+type FilterLiveMsg struct {
 	Filter gh.RunFilter
 }
 
@@ -144,7 +153,15 @@ func (m FilterModel) Update(msg tea.Msg) (FilterModel, tea.Cmd) {
 	}
 
 	var cmd tea.Cmd
+	prev := m.inputs[m.active].Value()
 	m.inputs[m.active], cmd = m.inputs[m.active].Update(msg)
+	if m.inputs[m.active].Value() != prev {
+		f := m.CurrentFilter(0)
+		debounce := tea.Tick(400*time.Millisecond, func(_ time.Time) tea.Msg {
+			return FilterLiveMsg{Filter: f}
+		})
+		return m, tea.Batch(cmd, debounce)
+	}
 	return m, cmd
 }
 

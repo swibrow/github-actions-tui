@@ -40,6 +40,15 @@ type RunsMsg struct {
 	Runs       []gh.WorkflowRun
 	Err        error
 	ResetCursor bool
+	// ForWorkflowID is the workflow filter the fetch was issued for,
+	// used to drop responses that no longer match the current selection.
+	ForWorkflowID int64
+}
+
+// TreeSelectionMsg fires after a short debounce when the sidebar selection
+// moves to a different workflow, triggering an immediate runs refresh.
+type TreeSelectionMsg struct {
+	WorkflowID int64
 }
 
 type JobsMsg struct {
@@ -142,9 +151,15 @@ type Model struct {
 	rerunRunID     int64 // run ID for pending rerun choice
 	backLocked     bool
 	yamlCache      map[string]map[string][]string // path -> job deps
+	runsCache      map[int64][]gh.WorkflowRun     // last unfiltered runs seen per workflow (0 = all)
+	runsFetchedAt  map[int64]time.Time            // when each workflow's runs were last fetched
 	repoOwner      string
 	repoName       string
 }
+
+// runsRefreshTTL is the cooldown after a fetch during which switching to a
+// workflow reuses the snapshot without triggering another refresh.
+const runsRefreshTTL = 10 * time.Second
 
 func NewModel(client gh.GitHubClient, owner, repo string) Model {
 	runs := NewRunsModel()
@@ -164,6 +179,8 @@ func NewModel(client gh.GitHubClient, owner, repo string) Model {
 		focus:          FocusMain,
 		sidebarVisible: true,
 		yamlCache:      make(map[string]map[string][]string),
+		runsCache:      make(map[int64][]gh.WorkflowRun),
+		runsFetchedAt:  make(map[int64]time.Time),
 		repoOwner:      owner,
 		repoName:       repo,
 	}
@@ -187,7 +204,7 @@ func (m Model) fetchWorkflows() tea.Cmd {
 func (m Model) fetchRuns(filter gh.RunFilter, resetCursor bool) tea.Cmd {
 	return func() tea.Msg {
 		runs, err := m.client.FetchRuns(m.ctx, filter)
-		return RunsMsg{Runs: runs, Err: err, ResetCursor: resetCursor}
+		return RunsMsg{Runs: runs, Err: err, ResetCursor: resetCursor, ForWorkflowID: filter.WorkflowID}
 	}
 }
 
@@ -453,6 +470,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateLayout()
 			return m, nil
 		}
+		// Remember the latest runs per workflow so switching back shows them
+		// instantly (only when no field filters skew the result set)
+		if !m.filter.HasActiveFilter() {
+			m.runsCache[msg.ForWorkflowID] = msg.Runs
+			m.runsFetchedAt[msg.ForWorkflowID] = time.Now()
+		}
+		// Drop stale responses fetched for a workflow that is no longer selected
+		if wfID, _ := m.tree.SelectedWorkflow(); msg.ForWorkflowID != wfID {
+			return m, nil
+		}
 		if msg.ResetCursor {
 			m.runs.SetRunsAndReset(msg.Runs)
 		} else {
@@ -600,6 +627,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
+	case TreeSelectionMsg:
+		// Debounced sidebar selection change — refetch runs if still on that workflow
+		if m.view != ViewWorkflowRuns {
+			return m, nil
+		}
+		if wfID, _ := m.tree.SelectedWorkflow(); wfID == msg.WorkflowID {
+			return m, m.fetchRuns(m.filter.CurrentFilter(wfID), true)
+		}
+		return m, nil
+
+	case FilterLiveMsg:
+		// Debounced live filter typing — apply if values haven't changed since
+		if !m.filter.Visible() {
+			return m, nil
+		}
+		wfID, _ := m.tree.SelectedWorkflow()
+		msg.Filter.WorkflowID = wfID
+		if m.filter.CurrentFilter(wfID) != msg.Filter {
+			return m, nil
+		}
+		m.runs.SetLoading(true)
+		return m, m.fetchRuns(msg.Filter, true)
+
 	case RunsForTreeMsg:
 		if msg.Err != nil {
 			m.err = msg.Err
@@ -607,6 +657,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.tree.SetRunsForWorkflow(msg.WorkflowID, msg.Runs)
+		// Seed the snapshot so selecting this workflow shows data immediately
+		if _, ok := m.runsCache[msg.WorkflowID]; !ok {
+			m.runsCache[msg.WorkflowID] = msg.Runs
+		}
 		return m, nil
 
 	case RepoListMsg:
@@ -1482,7 +1536,26 @@ func (m Model) updateFocused(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.view {
 	case ViewWorkflowRuns:
 		if m.focus == FocusSidebar {
+			prevID, _ := m.tree.SelectedWorkflow()
 			m.tree, cmd = m.tree.Update(msg)
+			if newID, _ := m.tree.SelectedWorkflow(); newID != prevID {
+				// Selection moved to a different workflow — show the runs we
+				// already know for it instantly, then refresh in the background
+				// (debounced so fast scrolling doesn't spam the API)
+				if cached, ok := m.cachedRunsFor(newID); ok {
+					m.runs.SetRunsAndReset(cached)
+					if time.Since(m.runsFetchedAt[newID]) < runsRefreshTTL {
+						// Still fresh — no refetch needed
+						return m, cmd
+					}
+				}
+				m.runs.SetLoading(true)
+				sel := newID
+				debounce := tea.Tick(200*time.Millisecond, func(_ time.Time) tea.Msg {
+					return TreeSelectionMsg{WorkflowID: sel}
+				})
+				return m, tea.Batch(cmd, debounce)
+			}
 		} else {
 			m.runs, cmd = m.runs.Update(msg)
 		}
@@ -1521,6 +1594,8 @@ func (m Model) switchRepo(owner, repo string) (tea.Model, tea.Cmd) {
 	m.pendingG = false
 	m.workflows = nil
 	m.yamlCache = make(map[string]map[string][]string)
+	m.runsCache = make(map[int64][]gh.WorkflowRun)
+	m.runsFetchedAt = make(map[int64]time.Time)
 
 	// Recreate sub-models
 	runs := NewRunsModel()
@@ -1550,7 +1625,7 @@ func (m *Model) updateLayout() {
 	if m.filter.Visible() || m.filter.HasActiveFilter() {
 		filterH = 3
 	}
-	helpH := 1
+	helpH := lipgloss.Height(m.helpBarView())
 	errH := 0
 	if m.err != nil || m.statusMsg != "" {
 		errH = 1
@@ -1714,7 +1789,12 @@ func (m Model) helpBarView() string {
 		extra = "  [/]:attempt"
 	}
 	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc/q:back  /:filter  r:refresh  R:rerun  T:trigger  w:workflow  b:sidebar  o:open  p:PR/branch  O:actions  ?:help" + extra)
-	return repo + keys
+	bar := repo + keys
+	if m.width > 0 {
+		// Wrap onto multiple lines when the terminal is too narrow
+		return lipgloss.NewStyle().Width(m.width).Render(bar)
+	}
+	return bar
 }
 
 func (m *Model) updateGraphRunInfo() {
@@ -1726,6 +1806,33 @@ func (m *Model) updateGraphRunInfo() {
 		runName = fmt.Sprintf("#%d·%d %s", m.currentRun.Number, m.currentAttempt, m.currentRun.Branch)
 	}
 	m.graph.SetRunInfo(runName, m.currentAttempt, m.currentRun.RunAttempt)
+}
+
+// cachedRunsFor returns the last-known runs for a workflow (0 = all) so they
+// can be shown instantly while a background refresh is in flight. Falls back
+// to filtering the all-workflows list. Unused when field filters are active,
+// since the snapshot is unfiltered.
+func (m Model) cachedRunsFor(workflowID int64) ([]gh.WorkflowRun, bool) {
+	if m.filter.HasActiveFilter() {
+		return nil, false
+	}
+	if runs, ok := m.runsCache[workflowID]; ok {
+		return runs, true
+	}
+	if workflowID == 0 {
+		return nil, false
+	}
+	all, ok := m.runsCache[0]
+	if !ok {
+		return nil, false
+	}
+	runs := make([]gh.WorkflowRun, 0)
+	for _, r := range all {
+		if r.WorkflowID == workflowID {
+			runs = append(runs, r)
+		}
+	}
+	return runs, true
 }
 
 func (m Model) workflowPath(workflowID int64) string {
