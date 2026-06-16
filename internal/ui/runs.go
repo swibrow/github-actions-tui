@@ -4,55 +4,35 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	gh "github.com/swibrow/github-actions-tui/internal/github"
 )
 
+// Card grid geometry.
+const (
+	cardMinW = 26 // minimum card outer width before dropping a column
+	cardH    = 6  // card outer height (rounded border 2 + 4 content lines)
+	cardGapX = 1  // horizontal gap between cards
+	cardGapY = 1  // vertical gap between card rows
+)
+
 type RunsModel struct {
-	table   table.Model
-	runs    []gh.WorkflowRun
-	focused bool
-	loading bool
-	width   int
-	height  int
-	title   string
+	runs      []gh.WorkflowRun
+	cursor    int
+	rowOffset int // first visible card-row
+	focused   bool
+	loading   bool
+	width     int
+	height    int
+	title     string
+
+	cols  int // columns in the grid (recomputed on resize)
+	cardW int // card outer width
 }
 
 func NewRunsModel() RunsModel {
-	columns := []table.Column{
-		{Title: " ", Width: 2},
-		{Title: "#", Width: 4},
-		{Title: "Action", Width: 16},
-		{Title: "Branch", Width: 16},
-		{Title: "SHA", Width: 7},
-		{Title: "Event", Width: 10},
-		{Title: "Actor", Width: 14},
-		{Title: "Age", Width: 6},
-		{Title: "Dur", Width: 6},
-	}
-	t := table.New(
-		table.WithColumns(columns),
-		table.WithRows([]table.Row{}),
-		table.WithFocused(true),
-	)
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(colorTeal).
-		BorderBottom(true).
-		Foreground(colorTeal).
-		Bold(true)
-	s.Cell = s.Cell.
-		Foreground(colorText)
-	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("#ffffff")).
-		Background(colorSelBg).
-		Bold(true)
-	t.SetStyles(s)
-
-	return RunsModel{table: t, title: "Workflow Runs"}
+	return RunsModel{title: "Workflow Runs", cols: 1, cardW: cardMinW}
 }
 
 func (m *RunsModel) SetRuns(runs []gh.WorkflowRun) {
@@ -66,51 +46,29 @@ func (m *RunsModel) SetRunsAndReset(runs []gh.WorkflowRun) {
 func (m *RunsModel) setRuns(runs []gh.WorkflowRun, resetCursor bool) {
 	m.runs = runs
 	m.loading = false
-	rows := make([]table.Row, 0, len(runs))
-	for _, r := range runs {
-		num := fmt.Sprintf("%d", r.Number)
-		if r.RunAttempt > 1 {
-			num = fmt.Sprintf("%d·%d", r.Number, r.RunAttempt)
-		}
-		sha := ""
-		if len(r.HeadSHA) >= 7 {
-			sha = r.HeadSHA[:7]
-		}
-		rows = append(rows, table.Row{
-			StatusIconPlain(r.Status, r.Conclusion),
-			num,
-			r.Name,
-			r.Branch,
-			sha,
-			r.Event,
-			r.Actor,
-			relativeTime(r.CreatedAt),
-			formatDuration(r.Duration),
-		})
+	if resetCursor {
+		m.cursor = 0
+		m.rowOffset = 0
 	}
-	m.table.SetRows(rows)
-	if resetCursor && len(rows) > 0 {
-		m.table.GotoTop()
+	if m.cursor >= len(runs) {
+		m.cursor = len(runs) - 1
 	}
-	m.resizeColumns()
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+	m.scrollToVisible()
 }
 
 func (m RunsModel) SelectedRun() *gh.WorkflowRun {
-	idx := m.table.Cursor()
-	if idx < 0 || idx >= len(m.runs) {
+	if m.cursor < 0 || m.cursor >= len(m.runs) {
 		return nil
 	}
-	r := m.runs[idx]
+	r := m.runs[m.cursor]
 	return &r
 }
 
 func (m *RunsModel) SetFocused(focused bool) {
 	m.focused = focused
-	if focused {
-		m.table.Focus()
-	} else {
-		m.table.Blur()
-	}
 }
 
 func (m *RunsModel) SetLoading(loading bool) {
@@ -121,115 +79,52 @@ func (m *RunsModel) SetTitle(title string) {
 	m.title = title
 }
 
-// colSpec defines a column with its title and resize behavior.
-type colSpec struct {
-	title string
-	min   int  // > 0: can shrink to this width when table is too narrow
-	grow  bool // true: receives extra space to fill table width
-}
-
-var runsColumns = []colSpec{
-	{title: " "},
-	{title: "#"},
-	{title: "Action", min: 6},
-	{title: "Branch", min: 8, grow: true},
-	{title: "SHA"},
-	{title: "Event"},
-	{title: "Actor", min: 6, grow: true},
-	{title: "Age"},
-	{title: "Duration", min: 3},
-}
-
 func (m *RunsModel) SetSize(width, height int) {
 	m.width = width
 	m.height = height
-	tableW := width - 4
-	if tableW < 10 {
-		tableW = 10
-	}
-	tableH := paneInnerHeight(height) // table includes its own header in SetHeight
-	if tableH < 1 {
-		tableH = 1
-	}
-	m.table.SetWidth(tableW)
-	m.table.SetHeight(tableH)
-	m.resizeColumns()
+	m.computeGrid()
+	m.scrollToVisible()
 }
 
-func (m *RunsModel) resizeColumns() {
-	if m.width == 0 {
-		return
+// computeGrid sizes the card columns to fill the available inner width.
+func (m *RunsModel) computeGrid() {
+	innerW := paneInnerWidth(m.width)
+	cols := (innerW + cardGapX) / (cardMinW + cardGapX)
+	if cols < 1 {
+		cols = 1
 	}
+	// Expand cards to consume the leftover width evenly.
+	m.cols = cols
+	m.cardW = (innerW - cardGapX*(cols-1)) / cols
+	if m.cardW < cardMinW/2 {
+		m.cardW = cardMinW / 2
+	}
+}
 
-	tableW := m.width - 4 // border + padding
-	if tableW < 10 {
-		tableW = 10
+func (m *RunsModel) visibleRows() int {
+	innerH := paneInnerHeight(m.height)
+	rows := (innerH + cardGapY) / (cardH + cardGapY)
+	if rows < 1 {
+		rows = 1
 	}
+	return rows
+}
 
-	// Size each column to fit its widest content (or header)
-	rows := m.table.Rows()
-	colWidths := make([]int, len(runsColumns))
-	for i, col := range runsColumns {
-		colWidths[i] = len(col.title)
+func (m *RunsModel) scrollToVisible() {
+	if m.cols < 1 {
+		m.cols = 1
 	}
-	for _, row := range rows {
-		for i, cell := range row {
-			if i < len(colWidths) && len(cell) > colWidths[i] {
-				colWidths[i] = len(cell)
-			}
-		}
+	row := m.cursor / m.cols
+	vis := m.visibleRows()
+	if row < m.rowOffset {
+		m.rowOffset = row
 	}
-
-	// Check if total fits; if not, shrink flexible columns
-	cellPadding := len(colWidths) * 2
-	total := cellPadding
-	for _, w := range colWidths {
-		total += w
+	if row >= m.rowOffset+vis {
+		m.rowOffset = row - vis + 1
 	}
-
-	if total > tableW {
-		excess := total - tableW
-		// Shrink flexible columns (those with min > 0), largest first
-		for excess > 0 {
-			shrunk := false
-			for i, col := range runsColumns {
-				if col.min > 0 && colWidths[i] > col.min && excess > 0 {
-					colWidths[i]--
-					excess--
-					shrunk = true
-				}
-			}
-			if !shrunk {
-				break
-			}
-		}
-	} else if total < tableW {
-		// Distribute remaining space to growable columns (Branch, Actor)
-		slack := tableW - total
-		for slack > 0 {
-			grown := false
-			for i, col := range runsColumns {
-				if col.grow && slack > 0 {
-					colWidths[i]++
-					slack--
-					grown = true
-				}
-			}
-			if !grown {
-				break
-			}
-		}
+	if m.rowOffset < 0 {
+		m.rowOffset = 0
 	}
-
-	cols := make([]table.Column, len(runsColumns))
-	for i, col := range runsColumns {
-		title := col.title
-		if len(title) > colWidths[i] {
-			title = title[:colWidths[i]]
-		}
-		cols[i] = table.Column{Title: title, Width: colWidths[i]}
-	}
-	m.table.SetColumns(cols)
 }
 
 func (m RunsModel) Update(msg tea.Msg) (RunsModel, tea.Cmd) {
@@ -240,39 +135,188 @@ func (m RunsModel) Update(msg tea.Msg) (RunsModel, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		switch msg.Button {
 		case tea.MouseWheelUp:
-			m.table.MoveUp(3)
+			m.rowOffset--
 		case tea.MouseWheelDown:
-			m.table.MoveDown(3)
+			m.rowOffset++
 		}
+		m.clampOffset()
 		return m, nil
+	case tea.KeyMsg:
+		if len(m.runs) == 0 {
+			return m, nil
+		}
+		switch msg.String() {
+		case "k", "up":
+			m.cursor -= m.cols
+		case "j", "down":
+			m.cursor += m.cols
+		case "h", "left":
+			m.cursor--
+		case "l", "right":
+			m.cursor++
+		case "home":
+			m.cursor = 0
+		case "end", "G":
+			m.cursor = len(m.runs) - 1
+		}
+		if m.cursor < 0 {
+			m.cursor = 0
+		}
+		if m.cursor >= len(m.runs) {
+			m.cursor = len(m.runs) - 1
+		}
+		m.scrollToVisible()
 	}
-	var cmd tea.Cmd
-	m.table, cmd = m.table.Update(msg)
-	return m, cmd
+	return m, nil
+}
+
+func (m *RunsModel) clampOffset() {
+	totalRows := 0
+	if m.cols > 0 {
+		totalRows = (len(m.runs) + m.cols - 1) / m.cols
+	}
+	maxOffset := totalRows - m.visibleRows()
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if m.rowOffset > maxOffset {
+		m.rowOffset = maxOffset
+	}
+	if m.rowOffset < 0 {
+		m.rowOffset = 0
+	}
 }
 
 func (m RunsModel) View() string {
-	titleText := m.title
+	titleText := fmt.Sprintf("%s (%d)", m.title, len(m.runs))
 	if m.loading && len(m.runs) > 0 {
-		// Background refresh — keep showing current rows with a hint
 		titleText += "  ⟳ refreshing…"
 	}
 
+	innerH := paneInnerHeight(m.height)
 	var content string
-	if m.loading && len(m.runs) == 0 {
+
+	switch {
+	case m.loading && len(m.runs) == 0:
 		content = styleLoading.Render("  Loading runs...")
-	} else if len(m.runs) == 0 {
+	case len(m.runs) == 0:
 		content = styleLoading.Render("  No runs found")
-	} else {
-		content = m.table.View()
+	default:
+		content = m.renderGrid()
 	}
 
-	innerH := paneInnerHeight(m.height)
 	lines := strings.Split(content, "\n")
 	for len(lines) < innerH {
 		lines = append(lines, "")
 	}
-	content = strings.Join(lines[:innerH], "\n")
+	if len(lines) > innerH {
+		lines = lines[:innerH]
+	}
+	content = strings.Join(lines, "\n")
 
 	return paneFrame(content, m.width, m.height, m.focused, "⚡", titleText)
+}
+
+// renderGrid lays the run cards out in a responsive grid.
+func (m RunsModel) renderGrid() string {
+	vis := m.visibleRows()
+	gapCol := strings.Repeat(" ", cardGapX)
+
+	var rowBlocks []string
+	for r := m.rowOffset; r < m.rowOffset+vis; r++ {
+		start := r * m.cols
+		if start >= len(m.runs) {
+			break
+		}
+		var cards []string
+		for c := 0; c < m.cols; c++ {
+			idx := start + c
+			if idx < len(m.runs) {
+				cards = append(cards, m.renderCard(m.runs[idx], idx == m.cursor))
+			} else {
+				// Blank placeholder keeps the row height/alignment stable.
+				cards = append(cards, lipgloss.NewStyle().Width(m.cardW).Height(cardH).Render(""))
+			}
+			if c < m.cols-1 {
+				cards = append(cards, gapCol)
+			}
+		}
+		rowBlocks = append(rowBlocks, lipgloss.JoinHorizontal(lipgloss.Top, cards...))
+	}
+
+	// Join card-rows with a blank gap line between them.
+	var out []string
+	for i, rb := range rowBlocks {
+		if i > 0 {
+			for g := 0; g < cardGapY; g++ {
+				out = append(out, "")
+			}
+		}
+		out = append(out, rb)
+	}
+	return strings.Join(out, "\n")
+}
+
+// renderCard renders a single run as a bordered card.
+func (m RunsModel) renderCard(r gh.WorkflowRun, selected bool) string {
+	style := styleCard
+	if selected {
+		style = styleCardSelected
+	}
+	ciw := m.cardW - 4 // border(2) + padding(2)
+	if ciw < 6 {
+		ciw = 6
+	}
+
+	num := fmt.Sprintf("#%d", r.Number)
+	if r.RunAttempt > 1 {
+		num = fmt.Sprintf("#%d·%d", r.Number, r.RunAttempt)
+	}
+	icon := StatusIcon(r.Status, r.Conclusion)
+
+	titleFg := colorText
+	if selected {
+		titleFg = lipgloss.Color("#ffffff")
+	}
+	title := icon + " " + lipgloss.NewStyle().Bold(true).Foreground(titleFg).
+		Render(truncate(num+" "+r.Name, ciw-2))
+
+	branch := lipgloss.NewStyle().Foreground(colorTeal).Render(truncate(r.Branch, ciw))
+
+	sha := ""
+	if len(r.HeadSHA) >= 7 {
+		sha = r.HeadSHA[:7]
+	}
+	meta := strings.TrimPrefix(sha+" · "+r.Event, " · ")
+	metaLine := lipgloss.NewStyle().Foreground(colorMuted).Render(truncate(meta, ciw))
+
+	// Bottom line: actor + age on the left, duration tag on the right.
+	left := r.Actor
+	if age := relativeTime(r.CreatedAt); age != "" {
+		if left != "" {
+			left += " · " + age
+		} else {
+			left = age
+		}
+	}
+	dur := formatDuration(r.Duration)
+	durTag := ""
+	if dur != "" {
+		durTag = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(dur)
+	}
+	bottom := padBetween(
+		lipgloss.NewStyle().Foreground(colorMuted).Render(truncate(left, ciw-lipgloss.Width(durTag)-1)),
+		durTag, ciw)
+
+	body := lipgloss.JoinVertical(lipgloss.Left, title, branch, metaLine, bottom)
+	return style.Width(m.cardW).Height(cardH).Render(body)
+}
+
+// padBetween left-justifies left and right-justifies right within width.
+func padBetween(left, right string, width int) string {
+	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		gap = 1
+	}
+	return left + strings.Repeat(" ", gap) + right
 }

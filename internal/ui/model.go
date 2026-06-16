@@ -1785,8 +1785,7 @@ func (m Model) View() tea.View {
 func (m Model) helpBarView() string {
 	repo := styleRepoIndicator.Render("⎇ " + m.repoOwner + "/" + m.repoName)
 	hints := []string{
-		helpHint("↑↓", "move"),
-		helpHint("←→", "expand"),
+		helpHint("↑↓←→", "move"),
 		helpHint("tab", "pane"),
 		helpHint("↵", "select"),
 		helpHint("esc", "back"),

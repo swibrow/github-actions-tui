@@ -125,6 +125,17 @@ var (
 			Bold(true).
 			Padding(0, 1)
 
+	// Run cards (kanban-style grid in the runs view).
+	styleCard = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#3d6d8a")). // muted teal
+			Padding(0, 1)
+
+	styleCardSelected = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorAccent). // bright purple — pops against teal
+				Padding(0, 1)
+
 	// Help-bar key/label styles for colorful, legible key hints.
 	styleHelpKey = lipgloss.NewStyle().
 			Foreground(colorPrimary).
