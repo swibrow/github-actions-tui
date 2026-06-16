@@ -29,16 +29,16 @@ type WorkflowInputsMsg struct {
 
 // TriggerModel is the overlay dialog for triggering a workflow_dispatch event.
 type TriggerModel struct {
-	visible    bool
-	loading    bool
-	workflowID int64
-	wfName     string
-	inputs     []gh.WorkflowInput
-	refInput   textinput.Model
+	visible     bool
+	loading     bool
+	workflowID  int64
+	wfName      string
+	inputs      []gh.WorkflowInput
+	refInput    textinput.Model
 	fieldInputs []textinput.Model
-	active     int // 0 = ref, 1..N = workflow inputs
-	width      int
-	height     int
+	active      int // 0 = ref, 1..N = workflow inputs
+	width       int
+	height      int
 }
 
 func NewTriggerModel() TriggerModel {

@@ -1,20 +1,34 @@
 package ui
 
-import "charm.land/lipgloss/v2"
+import (
+	"strings"
+
+	"charm.land/lipgloss/v2"
+)
+
+// Theme — a cohesive "Tokyo Night"-inspired palette. True-color hex values
+// degrade gracefully on 256-color terminals via lipgloss.
+var (
+	colorBg        = lipgloss.Color("#1a1b26") // base background
+	colorBgAlt     = lipgloss.Color("#24283b") // raised surface (selected rows, bars)
+	colorText      = lipgloss.Color("#c0caf5") // primary foreground
+	colorPrimary   = lipgloss.Color("#7aa2f7") // blue — focus / accents
+	colorAccent    = lipgloss.Color("#bb9af7") // purple — titles
+	colorTeal      = lipgloss.Color("#2ac3de") // teal — secondary accent
+	colorSuccess   = lipgloss.Color("#9ece6a") // green
+	colorFailure   = lipgloss.Color("#f7768e") // red
+	colorRunning   = lipgloss.Color("#7dcfff") // cyan — in progress
+	colorQueued    = lipgloss.Color("#e0af68") // amber — queued
+	colorCancelled = lipgloss.Color("#565f89") // slate — cancelled/skipped
+	colorMuted     = lipgloss.Color("#787c99") // muted text
+	colorBorder    = lipgloss.Color("#3b4261") // blurred border / dividers
+	colorFocused   = lipgloss.Color("#7aa2f7") // focused border
+	colorSelBg     = lipgloss.Color("#2d3f76") // selection background
+)
 
 var (
-	colorPrimary   = lipgloss.Color("39")  // blue
-	colorSuccess   = lipgloss.Color("34")  // green
-	colorFailure   = lipgloss.Color("196") // red
-	colorRunning   = lipgloss.Color("39")  // blue
-	colorQueued    = lipgloss.Color("226") // yellow
-	colorCancelled = lipgloss.Color("245") // gray
-	colorMuted     = lipgloss.Color("245")
-	colorBorder    = lipgloss.Color("240")
-	colorFocused   = lipgloss.Color("39")
-
 	styleSidebarFocused = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
+				Border(lipgloss.ThickBorder()).
 				BorderForeground(colorFocused).
 				Padding(0, 1)
 
@@ -24,7 +38,7 @@ var (
 				Padding(0, 1)
 
 	styleMainFocused = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
+				Border(lipgloss.ThickBorder()).
 				BorderForeground(colorFocused).
 				Padding(0, 1)
 
@@ -35,7 +49,7 @@ var (
 
 	styleFilterBar = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorBorder).
+			BorderForeground(colorTeal).
 			Padding(0, 1)
 
 	styleHelpBar = lipgloss.NewStyle().
@@ -44,11 +58,12 @@ var (
 
 	styleTitle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(colorPrimary)
+			Foreground(colorAccent)
 
 	styleError = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("15")).
+			Foreground(colorBg).
 			Background(colorFailure).
+			Bold(true).
 			Padding(0, 1)
 
 	styleLoading = lipgloss.NewStyle().
@@ -61,60 +76,112 @@ var (
 				Padding(1, 3).
 				Bold(true)
 
-	styleTreeNode = lipgloss.NewStyle()
+	styleTreeNode = lipgloss.NewStyle().
+			Foreground(colorText)
 
 	styleTreeNodeSelected = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(colorPrimary)
+				Foreground(lipgloss.Color("#ffffff")).
+				Background(colorSelBg)
 
 	styleGraphTier = lipgloss.NewStyle().
-			Foreground(colorMuted).
+			Foreground(colorTeal).
 			Bold(true)
 
 	styleGraphNode = lipgloss.NewStyle().
-			PaddingLeft(2)
+			PaddingLeft(2).
+			Foreground(colorText)
 
 	styleGraphNodeSelected = lipgloss.NewStyle().
 				PaddingLeft(2).
 				Bold(true).
-				Foreground(lipgloss.Color("15")).
-				Background(colorPrimary)
+				Foreground(lipgloss.Color("#ffffff")).
+				Background(colorSelBg)
 
 	styleLogGroup = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(colorPrimary)
+			Foreground(colorAccent)
 
 	stylePickerOverlay = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(colorPrimary).
+				BorderForeground(colorAccent).
 				Padding(1, 2)
 
 	stylePickerSelected = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("15")).
-				Background(colorPrimary)
+				Foreground(lipgloss.Color("#ffffff")).
+				Background(colorSelBg)
 
 	stylePickerMatch = lipgloss.NewStyle().
-				Foreground(colorPrimary).
+				Foreground(colorTeal).
 				Bold(true).
 				Underline(true)
 
 	stylePickerDesc = lipgloss.NewStyle().
-				Foreground(colorMuted).
-				Italic(true)
+			Foreground(colorMuted).
+			Italic(true)
 
 	stylePickerPrivate = lipgloss.NewStyle().
 				Foreground(colorQueued)
 
 	styleRepoIndicator = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(colorPrimary)
+				Foreground(colorBg).
+				Background(colorPrimary).
+				Padding(0, 1)
 
 	styleStatusBar = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("15")).
+			Foreground(colorBg).
 			Background(colorSuccess).
+			Bold(true).
 			Padding(0, 1)
+
+	// Help-bar key/label styles for colorful, legible key hints.
+	styleHelpKey = lipgloss.NewStyle().
+			Foreground(colorPrimary).
+			Bold(true)
+
+	styleHelpLabel = lipgloss.NewStyle().
+			Foreground(colorMuted)
+
+	styleHelpSep = lipgloss.NewStyle().
+			Foreground(colorBorder)
 )
+
+// paneTitle renders a full-width "window title bar" for a pane. Focused panes
+// get a bright filled bar; blurred panes a dim one. width is the pane's outer
+// width (the helper subtracts border + padding internally).
+func paneTitle(icon, text string, width int, focused bool) string {
+	inner := width - 4 // border(2) + padding(2)
+	if inner < 1 {
+		inner = 1
+	}
+	bg := colorBgAlt
+	fg := colorMuted
+	if focused {
+		bg = colorPrimary
+		fg = colorBg
+	}
+	label := " " + strings.TrimSpace(icon+" "+text)
+	return lipgloss.NewStyle().
+		Bold(true).
+		Foreground(fg).
+		Background(bg).
+		Width(inner).
+		MaxWidth(inner).
+		Render(label)
+}
+
+// helpHint renders a "key label" pair for the footer help bar.
+func helpHint(k, label string) string {
+	return styleHelpKey.Render(k) + " " + styleHelpLabel.Render(label)
+}
+
+// joinHints joins help hints with a dim separator.
+func joinHints(hints ...string) string {
+	sep := styleHelpSep.Render(" · ")
+	return strings.Join(hints, sep)
+}
 
 // StatusIcon returns a styled (ANSI-colored) status icon.
 // Use StatusIconPlain for contexts where ANSI codes break width measurement (e.g. bubbles table cells).

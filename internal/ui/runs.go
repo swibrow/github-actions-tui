@@ -40,13 +40,16 @@ func NewRunsModel() RunsModel {
 	s := table.DefaultStyles()
 	s.Header = s.Header.
 		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(colorBorder).
+		BorderForeground(colorTeal).
 		BorderBottom(true).
+		Foreground(colorTeal).
 		Bold(true)
+	s.Cell = s.Cell.
+		Foreground(colorText)
 	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("15")).
-		Background(colorPrimary).
-		Bold(false)
+		Foreground(lipgloss.Color("#ffffff")).
+		Background(colorSelBg).
+		Bold(true)
 	t.SetStyles(s)
 
 	return RunsModel{table: t, title: "Workflow Runs"}
@@ -255,12 +258,12 @@ func (m RunsModel) View() string {
 	}
 
 	var content string
-	header := styleTitle.Render(m.title)
+	titleText := m.title
 	if m.loading && len(m.runs) > 0 {
 		// Background refresh — keep showing current rows with a hint
-		header += styleLoading.Render("  refreshing…")
+		titleText += "  ⟳ refreshing…"
 	}
-	header += "\n"
+	header := paneTitle("⚡", titleText, m.width, m.focused) + "\n"
 
 	if m.loading && len(m.runs) == 0 {
 		content = header + styleLoading.Render("  Loading runs...")

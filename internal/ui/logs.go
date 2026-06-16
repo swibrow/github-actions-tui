@@ -216,20 +216,20 @@ func (m *LogsModel) IsJobInProgress() bool {
 func stepStatusText(step gh.JobStep) string {
 	switch step.Status {
 	case "in_progress":
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render("running")
+		return lipgloss.NewStyle().Foreground(colorRunning).Render("running")
 	case "completed":
 		switch step.Conclusion {
 		case "success":
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("34")).Render("done")
+			return lipgloss.NewStyle().Foreground(colorSuccess).Render("done")
 		case "failure":
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("failed")
+			return lipgloss.NewStyle().Foreground(colorFailure).Render("failed")
 		case "skipped":
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("skipped")
+			return lipgloss.NewStyle().Foreground(colorCancelled).Render("skipped")
 		default:
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(step.Conclusion)
+			return lipgloss.NewStyle().Foreground(colorCancelled).Render(step.Conclusion)
 		}
 	case "queued", "pending":
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Render("waiting")
+		return lipgloss.NewStyle().Foreground(colorQueued).Render("waiting")
 	}
 	return ""
 }
@@ -434,7 +434,7 @@ func (m *LogsModel) applyContent() {
 func highlightMatch(line, term string) string {
 	lower := strings.ToLower(line)
 	lowerTerm := strings.ToLower(term)
-	hlStyle := lipgloss.NewStyle().Background(lipgloss.Color("226")).Foreground(lipgloss.Color("0"))
+	hlStyle := lipgloss.NewStyle().Background(colorQueued).Foreground(colorBg)
 
 	var result strings.Builder
 	pos := 0
@@ -469,9 +469,9 @@ func (m *LogsModel) jumpToMatch() {
 func (m *LogsModel) SetSize(width, height int) {
 	m.width = width
 	m.height = height
-	innerW := width - 4  // border(2) + padding(2)
-	headerH := 2         // title + separator
-	footerH := 1         // scroll info
+	innerW := width - 4 // border(2) + padding(2)
+	headerH := 2        // title + separator
+	footerH := 1        // scroll info
 	searchH := 0
 	if m.searching {
 		searchH = 1
@@ -613,10 +613,10 @@ func (m LogsModel) View() string {
 
 	var content string
 	if m.loading {
-		header := styleTitle.Render(fmt.Sprintf("%s: %s", titlePrefix, m.jobName))
+		header := paneTitle("≡", fmt.Sprintf("%s: %s", titlePrefix, m.jobName), m.width, m.focused)
 		content = header + "\n" + styleLoading.Render("  Loading...")
 	} else if m.showingSteps {
-		header := styleTitle.Render(fmt.Sprintf("Steps: %s", m.jobName))
+		header := paneTitle("≡", fmt.Sprintf("Steps: %s", m.jobName), m.width, m.focused)
 		separator := lipgloss.NewStyle().Foreground(colorBorder).
 			Render(strings.Repeat("─", innerW))
 		stepContent := m.renderStepView(innerW)
@@ -646,7 +646,7 @@ func (m LogsModel) renderLogView(innerW int) string {
 	if m.fileViewMode {
 		titlePrefix = "Workflow"
 	}
-	header := styleTitle.Render(fmt.Sprintf("%s: %s", titlePrefix, m.jobName))
+	header := paneTitle("≡", fmt.Sprintf("%s: %s", titlePrefix, m.jobName), m.width, m.focused)
 	separator := lipgloss.NewStyle().Foreground(colorBorder).
 		Render(strings.Repeat("─", innerW))
 

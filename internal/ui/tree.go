@@ -289,7 +289,7 @@ func (m TreeModel) View() string {
 		style = styleSidebarFocused
 	}
 
-	title := styleTitle.Render("Workflows") + "\n"
+	title := paneTitle("❯", "Workflows", m.width, m.focused) + "\n"
 
 	innerH := m.height - 3 // border(2) + title(1)
 	if innerH < 1 {
@@ -334,7 +334,15 @@ func (m TreeModel) View() string {
 		}
 
 		if i == m.cursor && m.focused {
+			// Full-width highlighted pill for the selected node
+			pad := maxW - len(text)
+			if pad > 0 {
+				text += strings.Repeat(" ", pad)
+			}
 			lines = append(lines, styleTreeNodeSelected.Render(text))
+		} else if node.Kind == NodeWorkflow {
+			// Color the expand arrow + keep the workflow name in accent
+			lines = append(lines, styleTreeNode.Foreground(colorPrimary).Render(text))
 		} else {
 			lines = append(lines, styleTreeNode.Render(text))
 		}
@@ -349,4 +357,3 @@ func (m TreeModel) View() string {
 
 	return style.Width(m.width).Height(m.height).Render(content)
 }
-

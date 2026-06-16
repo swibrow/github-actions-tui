@@ -17,16 +17,16 @@ type GraphTier struct {
 
 // GraphModel displays jobs grouped by dependency tiers.
 type GraphModel struct {
-	tiers         []GraphTier
-	jobs          []gh.WorkflowJob
-	flat          []int // flat index -> (tierIdx, jobIdx) encoded as tierIdx*1000+jobIdx
-	cursor        int
-	offset        int
-	focused       bool
-	loading       bool
-	width         int
-	height        int
-	runName       string
+	tiers          []GraphTier
+	jobs           []gh.WorkflowJob
+	flat           []int // flat index -> (tierIdx, jobIdx) encoded as tierIdx*1000+jobIdx
+	cursor         int
+	offset         int
+	focused        bool
+	loading        bool
+	width          int
+	height         int
+	runName        string
 	currentAttempt int
 	totalAttempts  int
 }
@@ -293,12 +293,12 @@ func (m GraphModel) View() string {
 		style = styleMainFocused
 	}
 
-	title := styleTitle.Render(fmt.Sprintf("Jobs: %s", m.runName))
+	titleText := fmt.Sprintf("Jobs: %s", m.runName)
 	if m.loading && len(m.flat) > 0 {
 		// Background refresh — keep showing current jobs with a hint
-		title += styleLoading.Render("  refreshing…")
+		titleText += "  ⟳ refreshing…"
 	}
-	title += "\n"
+	title := paneTitle("⚙", titleText, m.width, m.focused) + "\n"
 	if m.totalAttempts > 1 {
 		title += styleHelpBar.Render(fmt.Sprintf("  ← [ attempt %d/%d ] →", m.currentAttempt, m.totalAttempts)) + "\n"
 	}
@@ -320,7 +320,7 @@ func (m GraphModel) View() string {
 	}
 	// Job line: "  " (node indent) + icon(1) + " " + name + " " + duration
 	durW := 10
-	indentW := 2 // styleGraphNode PaddingLeft
+	indentW := 2                         // styleGraphNode PaddingLeft
 	nameW := innerW - indentW - 2 - durW // 2 = icon + space after icon
 	if nameW < 10 {
 		nameW = 10
@@ -331,7 +331,7 @@ func (m GraphModel) View() string {
 	cursorLine := 0
 	flatIdx := 0
 	for _, tier := range m.tiers {
-		allLines = append(allLines, styleGraphTier.Render(tier.Label))
+		allLines = append(allLines, styleGraphTier.Render("▪ "+tier.Label))
 
 		for _, job := range tier.Jobs {
 			icon := StatusIcon(job.Status, job.Conclusion)
