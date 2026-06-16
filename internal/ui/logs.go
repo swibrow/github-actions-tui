@@ -235,7 +235,7 @@ func stepStatusText(step gh.JobStep) string {
 }
 
 func (m *LogsModel) scrollStepsToVisible() {
-	innerH := m.height - 6 // border(2) + header(2) + info line + blank line
+	innerH := paneInnerHeight(m.height) - 2 // info line + blank line
 	if innerH < 1 {
 		innerH = 1
 	}
@@ -279,7 +279,7 @@ func (m LogsModel) updateStepView(msg tea.Msg) (LogsModel, tea.Cmd) {
 
 func (m *LogsModel) handleStepScroll(button tea.MouseButton) {
 	delta := 3
-	innerH := m.height - 6
+	innerH := paneInnerHeight(m.height) - 2
 	if innerH < 1 {
 		innerH = 1
 	}
@@ -337,7 +337,7 @@ func (m LogsModel) renderStepView(innerW int) string {
 	}
 
 	// Apply scroll offset
-	innerH := m.height - 6 // border(2) + header(2) + info + blank
+	innerH := paneInnerHeight(m.height) - 2 // info + blank
 	if innerH < 1 {
 		innerH = 1
 	}
@@ -469,15 +469,13 @@ func (m *LogsModel) jumpToMatch() {
 func (m *LogsModel) SetSize(width, height int) {
 	m.width = width
 	m.height = height
-	innerW := width - 4 // border(2) + padding(2)
-	headerH := 2        // title + separator
-	footerH := 1        // scroll info
+	innerW := paneInnerWidth(width)
+	footerH := 1 // scroll info
 	searchH := 0
 	if m.searching {
 		searchH = 1
 	}
-	innerH := height - 2 // border(2)
-	vpH := innerH - headerH - footerH - searchH
+	vpH := paneInnerHeight(height) - footerH - searchH
 	if vpH < 1 {
 		vpH = 1
 	}
@@ -546,14 +544,12 @@ func (m LogsModel) updateSearch(msg tea.Msg) (LogsModel, tea.Cmd) {
 }
 
 func (m *LogsModel) recalcViewportHeight() {
-	headerH := 2
 	footerH := 1
 	searchH := 0
 	if m.searching {
 		searchH = 1
 	}
-	innerH := m.height - 2
-	vpH := innerH - headerH - footerH - searchH
+	vpH := paneInnerHeight(m.height) - footerH - searchH
 	if vpH < 1 {
 		vpH = 1
 	}
@@ -596,39 +592,26 @@ func (m *LogsModel) PrevMatch() {
 }
 
 func (m LogsModel) View() string {
-	style := styleMainBlurred
-	if m.focused {
-		style = styleMainFocused
-	}
-
-	innerW := m.width - 4
-	if innerW < 10 {
-		innerW = 10
-	}
+	innerW := paneInnerWidth(m.width)
 
 	titlePrefix := "Logs"
 	if m.fileViewMode {
 		titlePrefix = "Workflow"
 	}
 
-	var content string
+	var content, titleText string
 	if m.loading {
-		header := paneTitle("≡", fmt.Sprintf("%s: %s", titlePrefix, m.jobName), m.width, m.focused)
-		content = header + "\n" + styleLoading.Render("  Loading...")
+		titleText = fmt.Sprintf("%s: %s", titlePrefix, m.jobName)
+		content = styleLoading.Render("  Loading...")
 	} else if m.showingSteps {
-		header := paneTitle("≡", fmt.Sprintf("Steps: %s", m.jobName), m.width, m.focused)
-		separator := lipgloss.NewStyle().Foreground(colorBorder).
-			Render(strings.Repeat("─", innerW))
-		stepContent := m.renderStepView(innerW)
-		content = lipgloss.JoinVertical(lipgloss.Left, header, separator, stepContent)
+		titleText = fmt.Sprintf("Steps: %s", m.jobName)
+		content = m.renderStepView(innerW)
 	} else {
+		titleText = fmt.Sprintf("%s: %s", titlePrefix, m.jobName)
 		content = m.renderLogView(innerW)
 	}
 
-	innerH := m.height - 2
-	if innerH < 1 {
-		innerH = 1
-	}
+	innerH := paneInnerHeight(m.height)
 	lines := strings.Split(content, "\n")
 	for len(lines) < innerH {
 		lines = append(lines, "")
@@ -638,18 +621,10 @@ func (m LogsModel) View() string {
 	}
 	content = strings.Join(lines, "\n")
 
-	return style.Width(m.width).Height(m.height).Render(content)
+	return paneFrame(content, m.width, m.height, m.focused, "≡", titleText)
 }
 
 func (m LogsModel) renderLogView(innerW int) string {
-	titlePrefix := "Logs"
-	if m.fileViewMode {
-		titlePrefix = "Workflow"
-	}
-	header := paneTitle("≡", fmt.Sprintf("%s: %s", titlePrefix, m.jobName), m.width, m.focused)
-	separator := lipgloss.NewStyle().Foreground(colorBorder).
-		Render(strings.Repeat("─", innerW))
-
 	// Footer with search info
 	pct := m.viewport.ScrollPercent() * 100
 	footerParts := fmt.Sprintf("%.0f%%", pct)
@@ -665,7 +640,7 @@ func (m LogsModel) renderLogView(innerW int) string {
 	}
 	footer := lipgloss.NewStyle().Foreground(colorMuted).Render(footerParts)
 
-	parts := []string{header, separator, m.viewport.View(), footer}
+	parts := []string{m.viewport.View(), footer}
 	if m.searching {
 		searchBar := lipgloss.NewStyle().Foreground(colorPrimary).Render("/") + m.searchInput.View()
 		parts = append(parts, searchBar)

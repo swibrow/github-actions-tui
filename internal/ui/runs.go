@@ -147,7 +147,7 @@ func (m *RunsModel) SetSize(width, height int) {
 	if tableW < 10 {
 		tableW = 10
 	}
-	tableH := height - 3 // border(2) + title(1); table includes its own header in SetHeight
+	tableH := paneInnerHeight(height) // table includes its own header in SetHeight
 	if tableH < 1 {
 		tableH = 1
 	}
@@ -252,36 +252,27 @@ func (m RunsModel) Update(msg tea.Msg) (RunsModel, tea.Cmd) {
 }
 
 func (m RunsModel) View() string {
-	style := styleMainBlurred
-	if m.focused {
-		style = styleMainFocused
-	}
-
-	var content string
 	titleText := m.title
 	if m.loading && len(m.runs) > 0 {
 		// Background refresh — keep showing current rows with a hint
 		titleText += "  ⟳ refreshing…"
 	}
-	header := paneTitle("⚡", titleText, m.width, m.focused) + "\n"
 
+	var content string
 	if m.loading && len(m.runs) == 0 {
-		content = header + styleLoading.Render("  Loading runs...")
+		content = styleLoading.Render("  Loading runs...")
 	} else if len(m.runs) == 0 {
-		content = header + styleLoading.Render("  No runs found")
+		content = styleLoading.Render("  No runs found")
 	} else {
-		content = header + m.table.View()
+		content = m.table.View()
 	}
 
+	innerH := paneInnerHeight(m.height)
 	lines := strings.Split(content, "\n")
-	innerH := m.height - 2
-	if innerH < 1 {
-		innerH = 1
-	}
 	for len(lines) < innerH {
 		lines = append(lines, "")
 	}
 	content = strings.Join(lines[:innerH], "\n")
 
-	return style.Width(m.width).Height(m.height).Render(content)
+	return paneFrame(content, m.width, m.height, m.focused, "⚡", titleText)
 }

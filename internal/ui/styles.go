@@ -10,7 +10,6 @@ import (
 // degrade gracefully on 256-color terminals via lipgloss.
 var (
 	colorBg        = lipgloss.Color("#1a1b26") // base background
-	colorBgAlt     = lipgloss.Color("#24283b") // raised surface (selected rows, bars)
 	colorText      = lipgloss.Color("#c0caf5") // primary foreground
 	colorPrimary   = lipgloss.Color("#7aa2f7") // blue — focus / accents
 	colorAccent    = lipgloss.Color("#bb9af7") // purple — titles
@@ -21,22 +20,12 @@ var (
 	colorQueued    = lipgloss.Color("#e0af68") // amber — queued
 	colorCancelled = lipgloss.Color("#565f89") // slate — cancelled/skipped
 	colorMuted     = lipgloss.Color("#787c99") // muted text
-	colorBorder    = lipgloss.Color("#3b4261") // blurred border / dividers
-	colorFocused   = lipgloss.Color("#7aa2f7") // focused border
+	colorBorder    = lipgloss.Color("#3d59a1") // blurred border / dividers
+	colorFocused   = lipgloss.Color("#7dcfff") // focused border (bright cyan)
 	colorSelBg     = lipgloss.Color("#2d3f76") // selection background
 )
 
 var (
-	styleSidebarFocused = lipgloss.NewStyle().
-				Border(lipgloss.ThickBorder()).
-				BorderForeground(colorFocused).
-				Padding(0, 1)
-
-	styleSidebarBlurred = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(colorBorder).
-				Padding(0, 1)
-
 	styleMainFocused = lipgloss.NewStyle().
 				Border(lipgloss.ThickBorder()).
 				BorderForeground(colorFocused).
@@ -148,28 +137,74 @@ var (
 			Foreground(colorBorder)
 )
 
-// paneTitle renders a full-width "window title bar" for a pane. Focused panes
-// get a bright filled bar; blurred panes a dim one. width is the pane's outer
-// width (the helper subtracts border + padding internally).
-func paneTitle(icon, text string, width int, focused bool) string {
-	inner := width - 4 // border(2) + padding(2)
-	if inner < 1 {
-		inner = 1
+// paneInnerWidth is the usable content width inside a pane (border + padding).
+func paneInnerWidth(width int) int {
+	w := width - 4 // left/right border(2) + horizontal padding(2)
+	if w < 1 {
+		w = 1
 	}
-	bg := colorBgAlt
-	fg := colorMuted
+	return w
+}
+
+// paneInnerHeight is the usable content height inside a pane (top/bottom border).
+func paneInnerHeight(height int) int {
+	h := height - 2 // top/bottom border; vertical padding is 0
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
+// paneFrame draws content inside a bordered pane and splices a bold, colored
+// title into the top border line — a "window title" look. width/height are the
+// pane's outer dimensions; content must already be sized to fit the interior.
+func paneFrame(content string, width, height int, focused bool, icon, title string) string {
+	style := styleMainBlurred
 	if focused {
-		bg = colorPrimary
-		fg = colorBg
+		style = styleMainFocused
 	}
-	label := " " + strings.TrimSpace(icon+" "+text)
-	return lipgloss.NewStyle().
-		Bold(true).
-		Foreground(fg).
-		Background(bg).
-		Width(inner).
-		MaxWidth(inner).
-		Render(label)
+	box := style.Width(width).Height(height).Render(content)
+	return spliceBorderTitle(box, width, focused, icon, title)
+}
+
+// spliceBorderTitle rebuilds the top border line of a rendered box, embedding a
+// styled label like  ┏━ ⚡ Workflow Runs ━━━━━┓.
+func spliceBorderTitle(box string, width int, focused bool, icon, title string) string {
+	if width < 8 {
+		return box
+	}
+	lines := strings.Split(box, "\n")
+	if len(lines) == 0 {
+		return box
+	}
+
+	lc, rc, hor := "╭", "╮", "─"
+	bcol := colorBorder
+	lfg := colorTeal
+	if focused {
+		lc, rc, hor = "┏", "┓", "━"
+		bcol = colorFocused
+		lfg = lipgloss.Color("#ffffff")
+	}
+	borderStyle := lipgloss.NewStyle().Foreground(bcol)
+	labelStyle := lipgloss.NewStyle().Bold(true).Foreground(lfg)
+
+	label := strings.TrimSpace(icon + " " + title)
+	plain := " " + label + " "
+	maxLabel := width - 5 // corners(2) + lead(1) + trailing fill(>=1) + breathing room
+	if w := lipgloss.Width(plain); w > maxLabel {
+		plain = truncate(plain, maxLabel) + " "
+	}
+
+	lead := 1
+	fill := width - 3 - lipgloss.Width(plain) // corners(2)+lead(1)
+	if fill < 0 {
+		fill = 0
+	}
+	lines[0] = borderStyle.Render(lc+strings.Repeat(hor, lead)) +
+		labelStyle.Render(plain) +
+		borderStyle.Render(strings.Repeat(hor, fill)+rc)
+	return strings.Join(lines, "\n")
 }
 
 // helpHint renders a "key label" pair for the footer help bar.
