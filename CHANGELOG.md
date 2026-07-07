@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/swibrow/github-actions-tui/compare/v0.5.0...v0.5.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([55c1530](https://github.com/swibrow/github-actions-tui/commit/55c15307ba0d713aa5dc5363839f927432d06a6a))
+
 ## [0.5.0](https://github.com/swibrow/github-actions-tui/compare/v0.4.0...v0.5.0) (2026-07-07)
 
 
