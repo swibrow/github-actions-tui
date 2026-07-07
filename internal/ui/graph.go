@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	gh "github.com/swibrow/github-actions-tui/internal/github"
 )
 
@@ -17,16 +16,16 @@ type GraphTier struct {
 
 // GraphModel displays jobs grouped by dependency tiers.
 type GraphModel struct {
-	tiers         []GraphTier
-	jobs          []gh.WorkflowJob
-	flat          []int // flat index -> (tierIdx, jobIdx) encoded as tierIdx*1000+jobIdx
-	cursor        int
-	offset        int
-	focused       bool
-	loading       bool
-	width         int
-	height        int
-	runName       string
+	tiers          []GraphTier
+	jobs           []gh.WorkflowJob
+	flat           []int // flat index -> (tierIdx, jobIdx) encoded as tierIdx*1000+jobIdx
+	cursor         int
+	offset         int
+	focused        bool
+	loading        bool
+	width          int
+	height         int
+	runName        string
 	currentAttempt int
 	totalAttempts  int
 }
@@ -212,7 +211,7 @@ func (m *GraphModel) SetSize(width, height int) {
 }
 
 func (m *GraphModel) scrollToVisible() {
-	innerH := m.height - 3 // border(2) + title(1)
+	innerH := paneInnerHeight(m.height)
 	if m.totalAttempts > 1 {
 		innerH-- // attempt hint line
 	}
@@ -262,7 +261,7 @@ func (m GraphModel) Update(msg tea.Msg) (GraphModel, tea.Cmd) {
 
 func (m *GraphModel) handleScroll(button tea.MouseButton) {
 	delta := 3
-	innerH := m.height - 3 // border(2) + title(1)
+	innerH := paneInnerHeight(m.height)
 	if m.totalAttempts > 1 {
 		innerH--
 	}
@@ -288,29 +287,22 @@ func (m *GraphModel) handleScroll(button tea.MouseButton) {
 }
 
 func (m GraphModel) View() string {
-	style := styleMainBlurred
-	if m.focused {
-		style = styleMainFocused
-	}
-
-	title := styleTitle.Render(fmt.Sprintf("Jobs: %s", m.runName))
+	titleText := fmt.Sprintf("Jobs: %s", m.runName)
 	if m.loading && len(m.flat) > 0 {
 		// Background refresh — keep showing current jobs with a hint
-		title += styleLoading.Render("  refreshing…")
+		titleText += "  ⟳ refreshing…"
 	}
-	title += "\n"
+	header := ""
 	if m.totalAttempts > 1 {
-		title += styleHelpBar.Render(fmt.Sprintf("  ← [ attempt %d/%d ] →", m.currentAttempt, m.totalAttempts)) + "\n"
+		header = styleHelpBar.Render(fmt.Sprintf("  ← [ attempt %d/%d ] →", m.currentAttempt, m.totalAttempts)) + "\n"
 	}
 
 	if m.loading && len(m.flat) == 0 {
-		content := title + styleLoading.Render("  Loading jobs...")
-		return m.renderBox(style, content)
+		return m.renderBox(header+styleLoading.Render("  Loading jobs..."), titleText)
 	}
 
 	if len(m.flat) == 0 {
-		content := title + styleLoading.Render("  No jobs found")
-		return m.renderBox(style, content)
+		return m.renderBox(header+styleLoading.Render("  No jobs found"), titleText)
 	}
 
 	// Inner content width: panel width minus border(2) and padding(2)
@@ -320,7 +312,7 @@ func (m GraphModel) View() string {
 	}
 	// Job line: "  " (node indent) + icon(1) + " " + name + " " + duration
 	durW := 10
-	indentW := 2 // styleGraphNode PaddingLeft
+	indentW := 2                         // styleGraphNode PaddingLeft
 	nameW := innerW - indentW - 2 - durW // 2 = icon + space after icon
 	if nameW < 10 {
 		nameW = 10
@@ -331,7 +323,7 @@ func (m GraphModel) View() string {
 	cursorLine := 0
 	flatIdx := 0
 	for _, tier := range m.tiers {
-		allLines = append(allLines, styleGraphTier.Render(tier.Label))
+		allLines = append(allLines, styleGraphTier.Render("▪ "+tier.Label))
 
 		for _, job := range tier.Jobs {
 			icon := StatusIcon(job.Status, job.Conclusion)
@@ -357,7 +349,7 @@ func (m GraphModel) View() string {
 	}
 
 	// Scroll to keep cursor visible
-	innerH := m.height - 3 // border(2) + title(1)
+	innerH := paneInnerHeight(m.height)
 	if m.totalAttempts > 1 {
 		innerH-- // attempt hint line
 	}
@@ -383,16 +375,13 @@ func (m GraphModel) View() string {
 	}
 	visibleLines := allLines[scrollOffset:end]
 
-	content := title + strings.Join(visibleLines, "\n")
-	return m.renderBox(style, content)
+	content := header + strings.Join(visibleLines, "\n")
+	return m.renderBox(content, titleText)
 }
 
-func (m GraphModel) renderBox(style lipgloss.Style, content string) string {
+func (m GraphModel) renderBox(content, titleText string) string {
 	lines := strings.Split(content, "\n")
-	innerH := m.height - 2
-	if innerH < 1 {
-		innerH = 1
-	}
+	innerH := paneInnerHeight(m.height)
 	for len(lines) < innerH {
 		lines = append(lines, "")
 	}
@@ -400,5 +389,5 @@ func (m GraphModel) renderBox(style lipgloss.Style, content string) string {
 		lines = lines[:innerH]
 	}
 	content = strings.Join(lines, "\n")
-	return style.Width(m.width).Height(m.height).Render(content)
+	return paneFrame(content, m.width, m.height, m.focused, "⚙", titleText)
 }

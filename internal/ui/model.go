@@ -37,8 +37,8 @@ type WorkflowsMsg struct {
 }
 
 type RunsMsg struct {
-	Runs       []gh.WorkflowRun
-	Err        error
+	Runs        []gh.WorkflowRun
+	Err         error
 	ResetCursor bool
 	// ForWorkflowID is the workflow filter the fetch was issued for,
 	// used to drop responses that no longer match the current selection.
@@ -1783,13 +1783,25 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) helpBarView() string {
-	repo := styleRepoIndicator.Render(m.repoOwner + "/" + m.repoName)
-	extra := ""
-	if m.view == ViewJobs && m.currentRun != nil && m.currentRun.RunAttempt > 1 {
-		extra = "  [/]:attempt"
+	repo := styleRepoIndicator.Render("⎇ " + m.repoOwner + "/" + m.repoName)
+	hints := []string{
+		helpHint("↑↓←→", "move"),
+		helpHint("tab", "pane"),
+		helpHint("↵", "select"),
+		helpHint("esc", "back"),
+		helpHint("/", "filter"),
+		helpHint("r", "refresh"),
+		helpHint("R", "rerun"),
+		helpHint("T", "trigger"),
+		helpHint("w", "file"),
+		helpHint("b", "sidebar"),
+		helpHint("o", "open"),
+		helpHint("?", "help"),
 	}
-	keys := styleHelpBar.Render("  ↑↓/jk:move  ←→/hl:expand  tab:pane  enter:select  esc/q:back  /:filter  r:refresh  R:rerun  T:trigger  w:workflow  b:sidebar  o:open  p:PR/branch  O:actions  ?:help" + extra)
-	bar := repo + keys
+	if m.view == ViewJobs && m.currentRun != nil && m.currentRun.RunAttempt > 1 {
+		hints = append(hints, helpHint("[]", "attempt"))
+	}
+	bar := repo + "  " + joinHints(hints...)
 	if m.width > 0 {
 		// Wrap onto multiple lines when the terminal is too narrow
 		return lipgloss.NewStyle().Width(m.width).Render(bar)
@@ -1845,14 +1857,31 @@ func (m Model) workflowPath(workflowID int64) string {
 }
 
 func (m Model) confirmQuitView() string {
-	dialog := styleConfirmDialog.Render("Quit? (y/n)")
+	q := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("Quit github-actions-tui?")
+	yes := styleHelpKey.Render("y") + lipgloss.NewStyle().Foreground(colorMuted).Render(" yes")
+	no := styleHelpKey.Render("n") + lipgloss.NewStyle().Foreground(colorMuted).Render(" no")
+	body := lipgloss.JoinVertical(lipgloss.Center, q, "", yes+"    "+no)
+	dialog := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorFailure).
+		Padding(1, 4).
+		Render(body)
 	return lipgloss.Place(m.width, m.height,
 		lipgloss.Center, lipgloss.Center,
 		dialog)
 }
 
 func (m Model) rerunChoiceView() string {
-	dialog := styleConfirmDialog.Render("Rerun: (a)ll  (f)ailed  (esc) cancel")
+	title := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("Rerun workflow")
+	all := styleHelpKey.Render("a") + lipgloss.NewStyle().Foreground(colorMuted).Render(" all jobs")
+	failed := styleHelpKey.Render("f") + lipgloss.NewStyle().Foreground(colorMuted).Render(" failed only")
+	cancel := styleHelpKey.Render("esc") + lipgloss.NewStyle().Foreground(colorMuted).Render(" cancel")
+	body := lipgloss.JoinVertical(lipgloss.Left, title, "", all, failed, cancel)
+	dialog := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorTeal).
+		Padding(1, 3).
+		Render(body)
 	return lipgloss.Place(m.width, m.height,
 		lipgloss.Center, lipgloss.Center,
 		dialog)
@@ -1861,12 +1890,19 @@ func (m Model) rerunChoiceView() string {
 func (m Model) helpView() string {
 	style := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorPrimary).
+		BorderForeground(colorAccent).
 		Padding(1, 2).
 		Width(50)
 
-	help := `GitHub Actions TUI
+	titleBar := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(colorBg).
+		Background(colorAccent).
+		Width(46).
+		Align(lipgloss.Center).
+		Render("⚡ GitHub Actions TUI")
 
+	help := `
 Navigation:
   ↑/↓, j/k     Move cursor up/down
   tab           Switch panes
@@ -1914,7 +1950,34 @@ Filter (when open):
 
 Press ? or esc to close`
 
+	// Colorize section headers (lines ending in ":") and the closing hint.
+	sectionStyle := lipgloss.NewStyle().Foreground(colorTeal).Bold(true)
+	keyStyle := lipgloss.NewStyle().Foreground(colorPrimary)
+	var b strings.Builder
+	for _, line := range strings.Split(help, "\n") {
+		switch {
+		case strings.HasSuffix(line, ":") && !strings.HasPrefix(line, "  "):
+			b.WriteString(sectionStyle.Render(line))
+		case strings.HasPrefix(line, "Press "):
+			b.WriteString(styleLoading.Render(line))
+		case strings.HasPrefix(line, "  "):
+			// Split "  key   description" — color the key portion.
+			trimmed := strings.TrimLeft(line, " ")
+			if idx := strings.IndexAny(trimmed, " "); idx > 0 {
+				key := trimmed[:idx]
+				rest := trimmed[idx:]
+				b.WriteString("  " + keyStyle.Render(key) + lipgloss.NewStyle().Foreground(colorMuted).Render(rest))
+			} else {
+				b.WriteString(line)
+			}
+		default:
+			b.WriteString(line)
+		}
+		b.WriteString("\n")
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left, titleBar, b.String())
 	return lipgloss.Place(m.width, m.height,
 		lipgloss.Center, lipgloss.Center,
-		style.Render(help))
+		style.Render(content))
 }

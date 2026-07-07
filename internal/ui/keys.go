@@ -3,24 +3,24 @@ package ui
 import "charm.land/bubbles/v2/key"
 
 type KeyMap struct {
-	Up            key.Binding
-	Down          key.Binding
-	Left          key.Binding
-	Right         key.Binding
-	SwitchPane    key.Binding
-	Top           key.Binding
-	Bottom        key.Binding
-	Enter         key.Binding
-	Back          key.Binding
-	Filter        key.Binding
-	Refresh       key.Binding
-	Help          key.Binding
-	Quit          key.Binding
-	ToggleSidebar key.Binding
-	SwitchRepo    key.Binding
-	OpenBrowser   key.Binding
-	OpenSelected  key.Binding
-	OpenPRBranch  key.Binding
+	Up               key.Binding
+	Down             key.Binding
+	Left             key.Binding
+	Right            key.Binding
+	SwitchPane       key.Binding
+	Top              key.Binding
+	Bottom           key.Binding
+	Enter            key.Binding
+	Back             key.Binding
+	Filter           key.Binding
+	Refresh          key.Binding
+	Help             key.Binding
+	Quit             key.Binding
+	ToggleSidebar    key.Binding
+	SwitchRepo       key.Binding
+	OpenBrowser      key.Binding
+	OpenSelected     key.Binding
+	OpenPRBranch     key.Binding
 	PrevAttempt      key.Binding
 	NextAttempt      key.Binding
 	RerunWorkflow    key.Binding

@@ -165,10 +165,7 @@ func (m *TreeModel) SetSize(width, height int) {
 }
 
 func (m *TreeModel) scrollToVisible() {
-	innerH := m.height - 3 // border(2) + title(1)
-	if innerH < 1 {
-		innerH = 1
-	}
+	innerH := paneInnerHeight(m.height)
 	if m.cursor < m.offset {
 		m.offset = m.cursor
 	}
@@ -216,7 +213,7 @@ func (m *TreeModel) handleScroll(button tea.MouseButton) {
 			m.offset = 0
 		}
 	case tea.MouseWheelDown:
-		maxOffset := len(m.flat) - (m.height - 3)
+		maxOffset := len(m.flat) - paneInnerHeight(m.height)
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
@@ -284,17 +281,7 @@ func (m *TreeModel) SetLoading(workflowID int64) {
 }
 
 func (m TreeModel) View() string {
-	style := styleSidebarBlurred
-	if m.focused {
-		style = styleSidebarFocused
-	}
-
-	title := styleTitle.Render("Workflows") + "\n"
-
-	innerH := m.height - 3 // border(2) + title(1)
-	if innerH < 1 {
-		innerH = 1
-	}
+	innerH := paneInnerHeight(m.height)
 
 	var lines []string
 	for i, node := range m.flat {
@@ -334,7 +321,15 @@ func (m TreeModel) View() string {
 		}
 
 		if i == m.cursor && m.focused {
+			// Full-width highlighted pill for the selected node
+			pad := maxW - len(text)
+			if pad > 0 {
+				text += strings.Repeat(" ", pad)
+			}
 			lines = append(lines, styleTreeNodeSelected.Render(text))
+		} else if node.Kind == NodeWorkflow {
+			// Color the expand arrow + keep the workflow name in accent
+			lines = append(lines, styleTreeNode.Foreground(colorPrimary).Render(text))
 		} else {
 			lines = append(lines, styleTreeNode.Render(text))
 		}
@@ -345,8 +340,7 @@ func (m TreeModel) View() string {
 		lines = append(lines, "")
 	}
 
-	content := title + strings.Join(lines, "\n")
+	content := strings.Join(lines, "\n")
 
-	return style.Width(m.width).Height(m.height).Render(content)
+	return paneFrame(content, m.width, m.height, m.focused, "❯", "Workflows")
 }
-
