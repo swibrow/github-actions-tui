@@ -59,12 +59,6 @@ var (
 			Foreground(colorMuted).
 			Italic(true)
 
-	styleConfirmDialog = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(colorPrimary).
-				Padding(1, 3).
-				Bold(true)
-
 	styleTreeNode = lipgloss.NewStyle().
 			Foreground(colorText)
 
