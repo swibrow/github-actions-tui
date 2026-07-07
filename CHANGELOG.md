@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.0](https://github.com/swibrow/github-actions-tui/compare/v0.4.0...v0.5.0) (2026-07-07)
+
+
+### Features
+
+* instant refresh on selection with background loading and live filter ([7c6aac6](https://github.com/swibrow/github-actions-tui/commit/7c6aac6c3d501d825f4b26aead455f6c22d68e1f))
+* **ui:** embed pane titles in the top border + brighter frames ([cdb9ab1](https://github.com/swibrow/github-actions-tui/commit/cdb9ab18c5bc06378d072690f38aaaa5a41922b2))
+* **ui:** prettier themed TUI — colors, title bars & styled help ([6f84e3e](https://github.com/swibrow/github-actions-tui/commit/6f84e3e2998682b07c408dbbe23f00c037517103))
+* **ui:** replace runs table with a kanban-style card grid ([b2ebcbe](https://github.com/swibrow/github-actions-tui/commit/b2ebcbe2d5a34bbaf78dd57d3402b60fd45c6c0f))
+* **ui:** richer themed TUI with title bars, colors, and styled help ([2c22996](https://github.com/swibrow/github-actions-tui/commit/2c22996c18878a11d7af58e0f59c80f21e8b8733))
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([3ed7378](https://github.com/swibrow/github-actions-tui/commit/3ed7378a156c470bd4b116e422215b6a8d19dcf9))
+* **deps:** update go dependencies (non-major) ([ff81126](https://github.com/swibrow/github-actions-tui/commit/ff81126c01da58536113239faaae03d5636ba26e))
+* **ui:** remove unused styleConfirmDialog var ([e266aee](https://github.com/swibrow/github-actions-tui/commit/e266aeec785bb57712f3ab7feb870bfa65e22c8a))
+
 ## [0.4.0](https://github.com/swibrow/github-actions-tui/compare/v0.3.0...v0.4.0) (2026-03-21)
 
 
