@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.2](https://github.com/swibrow/github-actions-tui/compare/v0.5.1...v0.5.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/google/go-github/v84 to v89 ([edde42e](https://github.com/swibrow/github-actions-tui/commit/edde42e68219b44b96def3a944aaa8d094d4d6bc))
+* **deps:** update module modernc.org/sqlite to v1.54.0 ([#48](https://github.com/swibrow/github-actions-tui/issues/48)) ([5156068](https://github.com/swibrow/github-actions-tui/commit/51560689782e972f587580fd0356c42ef56cf2a9))
+
 ## [0.5.1](https://github.com/swibrow/github-actions-tui/compare/v0.5.0...v0.5.1) (2026-07-07)
 
 
