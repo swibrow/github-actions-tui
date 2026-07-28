@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/swibrow/github-actions-tui/compare/v0.5.2...v0.6.0) (2026-07-28)
+
+
+### Features
+
+* **ui:** add list layout to the runs view and ship macOS as a cask ([bcdc072](https://github.com/swibrow/github-actions-tui/commit/bcdc072c67f4a9e24eb96606806c843246db81f8))
+
 ## [0.5.2](https://github.com/swibrow/github-actions-tui/compare/v0.5.1...v0.5.2) (2026-07-17)
 
 
