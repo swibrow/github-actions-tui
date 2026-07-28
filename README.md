@@ -4,7 +4,7 @@ A terminal UI for monitoring GitHub Actions workflows, built with Go and [Bubble
 
 ## Features
 
-- Browse workflow runs with a sidebar for filtering by workflow
+- Browse workflow runs as a card grid or a compact list (`v` toggles), with a sidebar for filtering by workflow
 - Drill into jobs and view step-level details with dependency-based tier grouping
 - View job logs directly in the terminal with search and timestamp toggle
 - Filter runs by branch, actor, status, and event
@@ -38,11 +38,29 @@ gh auth login
 
 ## Install
 
-### Homebrew
+### macOS (Homebrew)
 
 ```sh
-brew install swibrow/tap/gha
+brew install --cask swibrow/tap/gha
 ```
+
+### Linux
+
+Each release publishes `.deb`, `.rpm`, and `.apk` packages for amd64 and arm64:
+
+```sh
+# Debian / Ubuntu
+sudo dpkg -i gha_<version>_linux_amd64.deb
+
+# Fedora / RHEL
+sudo rpm -i gha_<version>_linux_amd64.rpm
+
+# Alpine
+sudo apk add --allow-untrusted gha_<version>_linux_amd64.apk
+```
+
+Plain tarballs for both platforms are on the
+[releases page](https://github.com/swibrow/github-actions-tui/releases).
 
 ### Go
 
@@ -85,6 +103,7 @@ gha
 | `/` | Filter runs / search logs |
 | `r` | Refresh data |
 | `b` | Toggle sidebar |
+| `v` | Toggle runs layout (card grid / list) |
 | `o` | Open selected item in browser |
 | `p` | Open PR or branch in browser |
 | `O` | Open actions page in browser |

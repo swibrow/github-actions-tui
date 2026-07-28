@@ -130,6 +130,19 @@ var (
 				BorderForeground(colorAccent). // bright purple — pops against teal
 				Padding(0, 1)
 
+	// Run rows (list layout in the runs view).
+	styleListHeader = lipgloss.NewStyle().
+			Foreground(colorTeal).
+			Bold(true)
+
+	styleListRow = lipgloss.NewStyle().
+			Foreground(colorText)
+
+	styleListRowSelected = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#ffffff")).
+				Background(colorSelBg)
+
 	// Help-bar key/label styles for colorful, legible key hints.
 	styleHelpKey = lipgloss.NewStyle().
 			Foreground(colorPrimary).

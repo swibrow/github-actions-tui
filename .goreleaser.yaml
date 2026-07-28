@@ -1,38 +1,83 @@
 version: 2
 
 builds:
-  - main: ./cmd/gha
+  - id: darwin
+    main: ./cmd/gha
     binary: gha
     ldflags:
       - -s -w -X main.version={{.Version}}
     goos:
-      - linux
       - darwin
     goarch:
       - amd64
       - arm64
 
+  - id: linux
+    main: ./cmd/gha
+    binary: gha
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
 archives:
-  - format: tar.gz
+  - id: darwin
+    ids:
+      - darwin
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+  - id: linux
+    ids:
+      - linux
+    formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: checksums.txt
 
-brews:
-  - repository:
+homebrew_casks:
+  - name: gha
+    ids:
+      - darwin
+    repository:
       owner: swibrow
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
-    name: gha
+    binaries:
+      - gha
+    homepage: https://github.com/swibrow/github-actions-tui
+    description: Terminal UI for GitHub Actions
+    # Lets `brew audit` reconcile the homepage with the download domain.
+    url:
+      verified: github.com/swibrow/github-actions-tui
+    # The binaries are unsigned, so Gatekeeper quarantines them on download.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/gha"]
+          end
+
+# Casks are macOS-only, so Linux ships as native packages instead.
+nfpms:
+  - id: linux
+    package_name: gha
+    ids:
+      - linux
+    formats:
+      - deb
+      - rpm
+      - apk
+    maintainer: swibrow <15628653+swibrow@users.noreply.github.com>
     homepage: https://github.com/swibrow/github-actions-tui
     description: Terminal UI for GitHub Actions
     license: MIT
-    install: |
-      bin.install "gha"
-    test: |
-      assert_match version.to_s, shell_output("#{bin}/gha --version")
 
 changelog:
   use: github-native
