@@ -1037,6 +1037,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case ViewWorkflowRuns:
 		switch {
+		case key.Matches(msg, Keys.ToggleLayout):
+			m.runs.ToggleLayout()
+			return m, nil
+
 		case key.Matches(msg, Keys.ToggleSidebar):
 			m.sidebarVisible = !m.sidebarVisible
 			if !m.sidebarVisible && m.focus == FocusSidebar {
@@ -1597,9 +1601,11 @@ func (m Model) switchRepo(owner, repo string) (tea.Model, tea.Cmd) {
 	m.runsCache = make(map[int64][]gh.WorkflowRun)
 	m.runsFetchedAt = make(map[int64]time.Time)
 
-	// Recreate sub-models
+	// Recreate sub-models, carrying the chosen runs layout across the switch
+	layout := m.runs.Layout()
 	runs := NewRunsModel()
 	runs.SetFocused(true)
+	runs.SetLayout(layout)
 	m.runs = runs
 	m.tree = NewTreeModel()
 	m.graph = NewGraphModel()
@@ -1795,6 +1801,7 @@ func (m Model) helpBarView() string {
 		helpHint("T", "trigger"),
 		helpHint("w", "file"),
 		helpHint("b", "sidebar"),
+		helpHint("v", "grid/list"),
 		helpHint("o", "open"),
 		helpHint("?", "help"),
 	}
@@ -1927,6 +1934,7 @@ Actions:
   T             Trigger workflow (dispatch)
   w             View workflow file
   b             Toggle sidebar
+  v             Toggle grid/list layout (runs view)
   o             Open selected in browser
   p             Open PR or branch in browser
   O             Open actions page in browser

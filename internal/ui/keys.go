@@ -26,6 +26,7 @@ type KeyMap struct {
 	RerunWorkflow    key.Binding
 	TriggerWorkflow  key.Binding
 	ViewWorkflowFile key.Binding
+	ToggleLayout     key.Binding
 }
 
 var Keys = KeyMap{
@@ -120,6 +121,10 @@ var Keys = KeyMap{
 	ViewWorkflowFile: key.NewBinding(
 		key.WithKeys("w"),
 		key.WithHelp("w", "view workflow"),
+	),
+	ToggleLayout: key.NewBinding(
+		key.WithKeys("v"),
+		key.WithHelp("v", "grid/list"),
 	),
 }
 

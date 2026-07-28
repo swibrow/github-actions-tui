@@ -1,6 +1,9 @@
 # Binary
 /gha
 
+# GoReleaser build output
+/dist
+
 # IDE
 .idea/
 .vscode/
