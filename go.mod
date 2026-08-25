@@ -3,7 +3,7 @@ module github.com/swibrow/github-actions-tui
 go 1.25.0
 
 require (
-	charm.land/bubbles/v2 v2.2.0
+	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.0.9
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/cli/go-gh/v2 v2.13.0
