@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.1](https://github.com/swibrow/github-actions-tui/compare/v0.6.0...v0.6.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#57](https://github.com/swibrow/github-actions-tui/issues/57)) ([ae49fed](https://github.com/swibrow/github-actions-tui/commit/ae49fed861408d7e08f469989017dd4cbb279f28))
+* **deps:** update go dependencies (non-major) ([#60](https://github.com/swibrow/github-actions-tui/issues/60)) ([e64d46a](https://github.com/swibrow/github-actions-tui/commit/e64d46a0033371034bbf839c88703f93696fc81a))
+* **deps:** update module charm.land/bubbles/v2 to v2.2.0 ([#58](https://github.com/swibrow/github-actions-tui/issues/58)) ([ee6f928](https://github.com/swibrow/github-actions-tui/commit/ee6f9283a3ba5feb172935bff7957e175332db35))
+* **deps:** update module charm.land/bubbles/v2 to v2.2.1 ([#59](https://github.com/swibrow/github-actions-tui/issues/59)) ([9b935da](https://github.com/swibrow/github-actions-tui/commit/9b935dab64cc6c784e586348113d2efdfd7019ff))
+* **deps:** update module charm.land/lipgloss/v2 to v2.0.6 ([#56](https://github.com/swibrow/github-actions-tui/issues/56)) ([bfaa4cf](https://github.com/swibrow/github-actions-tui/commit/bfaa4cfb75c19d2931109f06566267192235c1d0))
+* **deps:** update module modernc.org/sqlite to v1.55.0 ([#51](https://github.com/swibrow/github-actions-tui/issues/51)) ([268c80b](https://github.com/swibrow/github-actions-tui/commit/268c80be1c30fe820bdca61576116e3004d07818))
+* **deps:** update module modernc.org/sqlite to v1.56.0 ([#53](https://github.com/swibrow/github-actions-tui/issues/53)) ([5d4af99](https://github.com/swibrow/github-actions-tui/commit/5d4af998828e0f38902b15d8982ac56907a363c5))
+
 ## [0.6.0](https://github.com/swibrow/github-actions-tui/compare/v0.5.2...v0.6.0) (2026-07-28)
 
 
