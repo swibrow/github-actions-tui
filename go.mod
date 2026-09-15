@@ -9,6 +9,7 @@ require (
 	github.com/cli/go-gh/v2 v2.16.0
 	github.com/google/go-github/v84 v84.0.0
 	github.com/google/go-github/v89 v89.0.0
+	github.com/google/go-github/v92 v92.0.0
 	github.com/sahilm/fuzzy v0.1.3
 	golang.org/x/oauth2 v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
