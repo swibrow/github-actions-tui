@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/swibrow/github-actions-tui/compare/v0.6.1...v0.6.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/cli/go-gh/v2 to v2.17.0 ([#74](https://github.com/swibrow/github-actions-tui/issues/74)) ([f5d78a0](https://github.com/swibrow/github-actions-tui/commit/f5d78a0dd4c85c04ca37dd1da4f05c068998f633))
+
 ## [0.6.1](https://github.com/swibrow/github-actions-tui/compare/v0.6.0...v0.6.1) (2026-10-21)
 
 
