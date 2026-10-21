@@ -53,9 +53,6 @@ homebrew_casks:
       - gha
     homepage: https://github.com/swibrow/github-actions-tui
     description: Terminal UI for GitHub Actions
-    # Lets `brew audit` reconcile the homepage with the download domain.
-    url:
-      verified: github.com/swibrow/github-actions-tui
     # The binaries are unsigned, so Gatekeeper quarantines them on download.
     hooks:
       post:
