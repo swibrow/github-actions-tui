@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/swibrow/github-actions-tui/compare/v0.6.2...v0.6.3) (2026-10-23)
+
+
+### Bug Fixes
+
+* **deps:** update module modernc.org/sqlite to v1.61.0 ([#76](https://github.com/swibrow/github-actions-tui/issues/76)) ([6c92bd1](https://github.com/swibrow/github-actions-tui/commit/6c92bd1cfae842f79f7a5807bb8065389696ea95))
+
 ## [0.6.2](https://github.com/swibrow/github-actions-tui/compare/v0.6.1...v0.6.2) (2026-10-21)
 
 
