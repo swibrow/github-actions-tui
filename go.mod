@@ -5,12 +5,12 @@ go 1.26.7
 require (
 	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.1.1
-	charm.land/lipgloss/v2 v2.0.6
+	charm.land/lipgloss/v2 v2.1.0
 	github.com/cli/go-gh/v2 v2.17.0
 	github.com/google/go-github/v84 v84.0.0
 	github.com/google/go-github/v89 v89.0.0
 	github.com/sahilm/fuzzy v0.1.3
-	golang.org/x/oauth2 v0.37.0
+	golang.org/x/oauth2 v0.38.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.62.0
 )
