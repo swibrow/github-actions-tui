@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.3](https://github.com/swibrow/github-actions-tui/compare/v0.6.2...v0.6.3) (2026-11-11)
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#81](https://github.com/swibrow/github-actions-tui/issues/81)) ([72d1199](https://github.com/swibrow/github-actions-tui/commit/72d11991be82e8774d0673091604d0d510d9e60f))
+* **deps:** update module charm.land/bubbletea/v2 to v2.1.1 ([#78](https://github.com/swibrow/github-actions-tui/issues/78)) ([658ed61](https://github.com/swibrow/github-actions-tui/commit/658ed6191c18120fc46d6c255bbe75022e19eb03))
+* **deps:** update module modernc.org/sqlite to v1.61.0 ([#76](https://github.com/swibrow/github-actions-tui/issues/76)) ([6c92bd1](https://github.com/swibrow/github-actions-tui/commit/6c92bd1cfae842f79f7a5807bb8065389696ea95))
+* **deps:** update module modernc.org/sqlite to v1.61.1 ([#79](https://github.com/swibrow/github-actions-tui/issues/79)) ([4d487aa](https://github.com/swibrow/github-actions-tui/commit/4d487aacdb44dd1f484b03ebf2e0eb7fe787e6c0))
+* **deps:** update module modernc.org/sqlite to v1.62.0 ([#80](https://github.com/swibrow/github-actions-tui/issues/80)) ([f07fe20](https://github.com/swibrow/github-actions-tui/commit/f07fe20bd1c60695fd5dbf1eea6d3011e4027404))
+
 ## [0.6.2](https://github.com/swibrow/github-actions-tui/compare/v0.6.1...v0.6.2) (2026-10-21)
 
 
